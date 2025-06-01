@@ -1,0 +1,81 @@
+// <= DOTENV CONFIGURATION =>
+dotenv.config({});
+
+// <= IMPORTS =>
+import path from "path";
+import cors from "cors";
+import dotenv from "dotenv";
+import express from "express";
+import mongoose from "mongoose";
+import cookieParser from "cookie-parser";
+import rootRoute from "./routes/root.route.js";
+import connectDB from "./config/dbConnection.js";
+import corsOptions from "./config/corsOptions.js";
+import { logEvents } from "./middleware/logger.js";
+import { getDirName } from "./utils/getDirName.js";
+import { errorHandler } from "./middleware/errorHandler.js";
+
+// <= DATABASE CONNECTION =>
+connectDB();
+
+// <= DIRNAME =>
+const __dirname = getDirName(import.meta.url);
+
+// <= APP =>
+const app = express();
+
+// <= PORT =>
+const PORT = process.env.PORT || 3000;
+
+// <= MIDDLEWARE> =>
+// CORS MIDDLEWARE
+app.use(cors(corsOptions));
+// JSON MIDDLEWARE
+app.use(express.json());
+// FORM DATA MIDDLEWARE
+app.use(express.urlencoded({ extended: true }));
+// COOKIE PARSER MIDDLEWARE
+app.use(cookieParser());
+// STATIC MIDDLEWARE
+app.use("/", express.static(path.join(__dirname, "public")));
+
+// <= ROUTES MIDDLEWARE =>
+// ROOT ROUTE
+app.use("/", rootRoute);
+
+// <= MIDDLEWARE 404 RESPONSE =>
+app.all("*", (req, res) => {
+  // SETTING STATUS
+  res.status(404);
+  // RESPONSE HANDLING
+  if (req.accepts("html")) {
+    // HTML RESPONSE
+    res.sendFile(path.join(__dirname, "views", "404.html"));
+  } else if (req.accepts("json")) {
+    // JSON RESPONSE
+    res.json({ message: "404 : Page Not Found" });
+  } else {
+    // TEXT RESPONSE
+    res.type("txt").send("404 : Page Not Found");
+  }
+});
+
+// <= ERROR HANDLER =>
+app.use(errorHandler);
+
+// <= DATABASE & SERVER CONNECTION LISTENER =>
+mongoose.connection.once("open", () => {
+  console.log("Database Connection Established Successfully");
+  app.listen(PORT, () => {
+    console.log(`Server is running on port ${PORT}`);
+  });
+});
+
+// <= DATABASE CONNECTION ERROR LISTENER =>
+mongoose.connection.on("error", (err) => {
+  console.log(err);
+  logEvents(
+    `${err.no}: ${err.code}\t${err.syscall}\t${err.hostname}`,
+    "mongoErrLog.log"
+  );
+});

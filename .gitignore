@@ -1,0 +1,51 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Dependency Directories
+node_modules/
+
+# Build Outputs
+dist/
+dist-ssr/
+
+# Environment Files
+.env
+.env.local
+
+# Lock Files
+# package-lock.json
+# yarn.lock
+# pnpm-lock.yaml
+
+# Coverage Reports
+coverage/
+.nyc_output/
+
+# Editor Directories and Files
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+
+# OS-Specific
+Thumbs.db
+
+# Optional: TypeScript Declaration Outputs
+# *.d.ts
+
+# Miscellaneous
+*.local
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Temporary Files
+.txt
