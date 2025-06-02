@@ -9,6 +9,7 @@ import express from "express";
 import mongoose from "mongoose";
 import cookieParser from "cookie-parser";
 import rootRoute from "./routes/root.route.js";
+import userRoute from "./routes/user.route.js";
 import connectDB from "./config/dbConnection.js";
 import corsOptions from "./config/corsOptions.js";
 import { logEvents } from "./middleware/logger.js";
@@ -42,6 +43,8 @@ app.use("/", express.static(path.join(__dirname, "public")));
 // <= ROUTES MIDDLEWARE =>
 // ROOT ROUTE
 app.use("/", rootRoute);
+// USER ROUTE
+app.use("/api/v1/user", userRoute);
 
 // <= MIDDLEWARE 404 RESPONSE =>
 app.all("*", (req, res) => {
