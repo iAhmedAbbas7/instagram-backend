@@ -2,6 +2,7 @@
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import getDataURI from "../utils/dataURI.js";
+import { Post } from "../models/post.model.js";
 import { User } from "../models/user.model.js";
 import cloudinary from "../utils/cloudinary.js";
 import expressAsyncHandler from "express-async-handler";
@@ -126,6 +127,16 @@ export const userLogin = expressAsyncHandler(async (req, res) => {
   const token = jwt.sign(tokenData, process.env.TOKEN_SECRET_KEY, {
     expiresIn: "1d",
   });
+  // POPULATING USER POSTS WHEN LOGGING IN
+  const populatedUserPosts = await Promise.all(
+    foundUser.posts.map(async (postId) => {
+      const post = await Post.findById(postId);
+      if (post.author.equals(foundUser._id)) {
+        return post;
+      }
+      return null;
+    })
+  );
   // RETURNING LOGGED IN USER
   const user = {
     _id: foundUser._id,
@@ -133,10 +144,10 @@ export const userLogin = expressAsyncHandler(async (req, res) => {
     email: foundUser.email,
     username: foundUser.username,
     profilePhoto: foundUser.profilePhoto,
-    posts: foundUser.posts,
     followers: foundUser.followers,
     following: foundUser.following,
     bookmarks: foundUser.bookmarks,
+    posts: populatedUserPosts,
   };
   return res
     .status(200)
