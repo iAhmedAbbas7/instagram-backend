@@ -55,14 +55,14 @@ export const registerUser = expressAsyncHandler(async (req, res) => {
   // IF EMAIL FOUND
   if (foundUserEmail) {
     return res.status(409).json({
-      message: `Provided Email "${email}" is Already Registered!`,
+      message: `Provided Email ${email} is Already Registered!`,
       success: false,
     });
   }
   // IF USERNAME FOUND
   if (foundUserUsername) {
     return res.status(409).json({
-      message: `Provided Username "${username}" is Already Registered!`,
+      message: `Provided Username ${username} is Already Registered!`,
       success: false,
     });
   }
@@ -77,7 +77,7 @@ export const registerUser = expressAsyncHandler(async (req, res) => {
   });
   // RETURNING RESPONSE
   return res.status(201).json({
-    message: `User "${fullName}" Registered Successfully!`,
+    message: `User ${fullName} Registered Successfully!`,
     success: true,
     user,
   });
