@@ -1,8 +1,8 @@
 // <= IMPORTS =>
 import sharp from "sharp";
-import cloudinary from "../utils/cloudinary";
 import { Post } from "../models/post.model.js";
 import { User } from "../models/user.model.js";
+import cloudinary from "../utils/cloudinary.js";
 import { Comment } from "../models/comment.model.js";
 import expressAsyncHandler from "express-async-handler";
 

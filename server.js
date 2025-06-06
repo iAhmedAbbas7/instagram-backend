@@ -10,10 +10,12 @@ import mongoose from "mongoose";
 import cookieParser from "cookie-parser";
 import rootRoute from "./routes/root.route.js";
 import userRoute from "./routes/user.route.js";
+import postRoute from "./routes/post.route.js";
 import connectDB from "./config/dbConnection.js";
 import corsOptions from "./config/corsOptions.js";
 import { logEvents } from "./middleware/logger.js";
 import { getDirName } from "./utils/getDirName.js";
+import messageRoute from "./routes/message.route.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 
 // <= DATABASE CONNECTION =>
@@ -45,6 +47,10 @@ app.use("/", express.static(path.join(__dirname, "public")));
 app.use("/", rootRoute);
 // USER ROUTE
 app.use("/api/v1/user", userRoute);
+// POST ROUTE
+app.use("/api/v1/post", postRoute);
+// MESSAGE ROUTE
+app.use("/api/v1/message", messageRoute);
 
 // <= MIDDLEWARE 404 RESPONSE =>
 app.all("*", (req, res) => {
