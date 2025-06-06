@@ -78,11 +78,11 @@ export const getAllPosts = expressAsyncHandler(async (req, res) => {
   // GETTING ALL POSTS FOR THE USER
   const posts = await Post.find()
     .sort({ createdAt: -1 })
-    .populate({ path: "author", select: "username profilePhoto" })
+    .populate({ path: "author", select: "username profilePhoto fullName" })
     .populate({
       path: "comments",
       sort: { createdAt: -1 },
-      populate: { path: "author", select: "username profilePhoto" },
+      populate: { path: "author", select: "username profilePhoto fullName" },
     });
   // RETURNING RESPONSE
   return res.status(200).json({ success: true, posts });
@@ -101,11 +101,11 @@ export const getUserPosts = expressAsyncHandler(async (req, res) => {
   // GETTING THE USER'S POSTS
   const posts = await Post.find({ author: userId })
     .sort({ createdAt: -1 })
-    .populate({ path: "author", select: "username profilePhoto" })
+    .populate({ path: "author", select: "username profilePhoto fullName" })
     .populate({
       path: "comments",
       sort: { createdAt: -1 },
-      populate: { path: "author", select: "username profilePhoto" },
+      populate: { path: "author", select: "username profilePhoto fullName" },
     });
   //  IF NO POSTS FOUND
   if (!posts || posts.length === 0) {
@@ -185,7 +185,7 @@ export const postComment = expressAsyncHandler(async (req, res) => {
     text,
     author: userId,
     post: postId,
-  }).populate({ path: "author", select: "username profilePhoto" });
+  }).populate({ path: "author", select: "username profilePhoto fullName" });
   // ADDING THE COMMENT TO THE POST COMMENTS ARRAY
   foundPost.comments.push(comment._id);
   // SAVING THE POST
