@@ -131,7 +131,7 @@ export const userLogin = expressAsyncHandler(async (req, res) => {
   const populatedUserPosts = await Promise.all(
     foundUser.posts.map(async (postId) => {
       const post = await Post.findById(postId);
-      if (post.author.equals(foundUser._id)) {
+      if (post?.author.equals(foundUser._id)) {
         return post;
       }
       return null;

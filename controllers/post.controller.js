@@ -80,14 +80,14 @@ export const getAllPosts = expressAsyncHandler(async (req, res) => {
     .sort({ createdAt: -1 })
     .populate({
       path: "author",
-      select: "username fullName profilePhoto followers following",
+      select: "username fullName profilePhoto followers following posts",
     })
     .populate({
       path: "comments",
       sort: { createdAt: -1 },
       populate: {
         path: "author",
-        select: "username fullName profilePhoto followers following",
+        select: "username fullName profilePhoto followers following posts",
       },
     });
   // RETURNING RESPONSE
@@ -109,14 +109,14 @@ export const getUserPosts = expressAsyncHandler(async (req, res) => {
     .sort({ createdAt: -1 })
     .populate({
       path: "author",
-      select: "username fullName profilePhoto followers following",
+      select: "username fullName profilePhoto followers following posts",
     })
     .populate({
       path: "comments",
       sort: { createdAt: -1 },
       populate: {
         path: "author",
-        select: "username fullName profilePhoto followers following",
+        select: "username fullName profilePhoto followers following posts",
       },
     });
   //  IF NO POSTS FOUND
@@ -199,7 +199,7 @@ export const postComment = expressAsyncHandler(async (req, res) => {
     post: postId,
   }).populate({
     path: "author",
-    select: "username fullName profilePhoto followers following",
+    select: "username fullName profilePhoto followers following posts",
   });
   // ADDING THE COMMENT TO THE POST COMMENTS ARRAY
   foundPost.comments.push(comment._id);
