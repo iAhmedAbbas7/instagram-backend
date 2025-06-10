@@ -83,10 +83,6 @@ export const getAllPosts = expressAsyncHandler(async (req, res) => {
       select: "username fullName profilePhoto followers following posts",
     })
     .populate({
-      path: "likes",
-      select: "username fullName profilePhoto followers following posts",
-    })
-    .populate({
       path: "comments",
       sort: { createdAt: -1 },
       populate: {
@@ -245,6 +241,35 @@ export const getPostComments = expressAsyncHandler(async (req, res) => {
   }
   // RETURNING RESPONSE
   return res.status(200).json({ success: true, comments });
+});
+
+// <= GET POST LIKES =>
+export const getPostLikes = expressAsyncHandler(async (req, res) => {
+  // GETTING THE CURRENT LOGGED IN USER ID
+  const userId = req.id;
+  // GETTING THE POST ID FROM REQUEST PARAMS
+  const postId = req.params.id;
+  // FINDING THE USER IN THE USER MODEL THROUGH USER ID
+  const foundUser = await User.findById(userId).exec();
+  // IF USER NOT FOUND
+  if (!foundUser) {
+    return res.status(404).json({ message: "User Not Found!", success: false });
+  }
+  // FINDING THE POST THROUGH POST ID
+  const foundPost = await Post.findById(postId).populate({
+    path: "likes",
+    select: "username fullName profilePhoto followers following posts",
+  });
+  // IF POST NOT FOUND
+  if (!foundPost) {
+    return res.status(404).json({ message: "Post Not Found!", success: false });
+  }
+  // IF POST HAS NO LIKES
+  if (!foundPost.likes || foundPost.likes === 0) {
+    return res.status(404).json({ message: "No Likes!", success: false });
+  }
+  // RETURNING RESPONSE
+  return res.status(200).json({ success: true, likes: foundPost.likes });
 });
 
 // <= DELETE POST =>
