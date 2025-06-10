@@ -83,6 +83,10 @@ export const getAllPosts = expressAsyncHandler(async (req, res) => {
       select: "username fullName profilePhoto followers following posts",
     })
     .populate({
+      path: "likes",
+      select: "username fullName profilePhoto followers following posts",
+    })
+    .populate({
       path: "comments",
       sort: { createdAt: -1 },
       populate: {
