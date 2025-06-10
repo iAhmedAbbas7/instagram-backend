@@ -17,8 +17,8 @@ const router = express.Router();
 
 // <= ROUTES =>
 router.post("/login", userLogin);
+router.get("/logout", userLogout);
 router.post("/register", registerUser);
-router.get("/logout", isAuthenticated, userLogout);
 router.get("/:id/profile", isAuthenticated, getUserProfile);
 router.get("/suggestedUsers", isAuthenticated, getSuggestedUsers);
 router.post("/followOrUnfollow/:id", isAuthenticated, followOrUnfollowUser);

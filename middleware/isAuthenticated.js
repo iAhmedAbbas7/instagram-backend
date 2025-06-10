@@ -7,7 +7,9 @@ const isAuthenticated = (req, res, next) => {
   const token = req.cookies.token;
   // IF NO TOKEN FOUND
   if (!token) {
-    return res.status(401).json({ message: "Unauthorized", success: false });
+    return res
+      .status(401)
+      .json({ message: "Unauthorized to Perform Action!", success: false });
   }
   // DECODING TOKEN IF FOUND
   const decodedToken = jwt.verify(token, process.env.TOKEN_SECRET_KEY);
