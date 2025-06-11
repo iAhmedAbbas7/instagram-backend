@@ -197,7 +197,9 @@ export const postComment = expressAsyncHandler(async (req, res) => {
     text,
     author: userId,
     post: postId,
-  }).populate({
+  });
+  // POPULATING THE COMMENT
+  await comment.populate({
     path: "author",
     select: "username fullName profilePhoto followers following posts",
   });
