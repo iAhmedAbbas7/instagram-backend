@@ -75,16 +75,29 @@ export const getAllPosts = expressAsyncHandler(async (req, res) => {
   if (!foundUser) {
     return res.status(404).json({ message: "User Not Found!", success: false });
   }
-  // GETTING ALL POSTS FOR THE USER
+  // PAGINATION LIMIT NUMBER
+  const limitNumber = parseInt(req.query.limit, 10);
+  // PAGINATION SKIP NUMBER
+  const skipNumber = parseInt(req.query.skip, 10);
+  // IF NO SKIP OR LIMIT NUMBER IS PROVIDED
+  if (isNaN(skipNumber) || isNaN(limitNumber) || limitNumber <= 0) {
+    return res.status(400).json({
+      message: "Must Provide Positive Skip & Limit Number",
+      success: false,
+    });
+  }
+  // BUILDING THE PAGINATED QUERY
   const posts = await Post.find()
     .sort({ createdAt: -1 })
+    .skip(skipNumber)
+    .limit(limitNumber)
     .populate({
       path: "author",
       select: "username fullName profilePhoto followers following posts",
     })
     .populate({
       path: "comments",
-      sort: { createdAt: -1 },
+      options: { sort: { createdAt: -1 } },
       populate: {
         path: "author",
         select: "username fullName profilePhoto followers following posts",
