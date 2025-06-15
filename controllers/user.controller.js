@@ -185,8 +185,35 @@ export const getUserProfile = expressAsyncHandler(async (req, res) => {
   // FINDING THE USER IN THE USER MODEL THROUGH USER ID
   const foundUser = await User.findById(userId)
     .select("-password -__v")
-    .populate({ path: "posts", options: { sort: { createdAt: -1 } } })
-    .populate("bookmarks")
+    .populate([
+      {
+        path: "posts",
+        options: { sort: { createdAt: -1 } },
+        populate: [
+          {
+            path: "author",
+            select: "username fullName profilePhoto followers following posts",
+          },
+          {
+            path: "comments",
+            options: { sort: { createdAt: -1 } },
+            populate: {
+              path: "author",
+              select:
+                "username fullName profilePhoto followers following posts",
+            },
+          },
+        ],
+      },
+      {
+        path: "bookmarks",
+        options: { sort: { createdAt: -1 } },
+        populate: {
+          path: "author",
+          select: "username fullName profilePhoto followers following posts",
+        },
+      },
+    ])
     .exec();
   // IF USER NOT FOUND
   if (!foundUser) {
