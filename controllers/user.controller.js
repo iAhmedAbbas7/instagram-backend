@@ -176,8 +176,18 @@ export const userLogout = expressAsyncHandler(async (_, res) => {
 export const getUserProfile = expressAsyncHandler(async (req, res) => {
   // GETTING USER ID FROM THE REQUEST PARAMS
   const userId = req.params.id;
+  // IF ID NOT PROVIDED
+  if (!req.params.id) {
+    return res
+      .status(400)
+      .json({ message: "User ID is Required!", success: false });
+  }
   // FINDING THE USER IN THE USER MODEL THROUGH USER ID
-  const foundUser = await User.findById(userId).select("-password -__v").exec();
+  const foundUser = await User.findById(userId)
+    .select("-password -__v")
+    .populate({ path: "posts", options: { sort: { createdAt: -1 } } })
+    .populate("bookmarks")
+    .exec();
   // IF USER NOT FOUND
   if (!foundUser) {
     return res.status(404).json({ message: "User Not Found!", success: false });
