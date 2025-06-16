@@ -143,6 +143,7 @@ export const userLogin = expressAsyncHandler(async (req, res) => {
     fullName: foundUser.fullName,
     email: foundUser.email,
     username: foundUser.username,
+    bio: foundUser.bio,
     profilePhoto: foundUser.profilePhoto,
     followers: foundUser.followers,
     following: foundUser.following,
@@ -239,6 +240,10 @@ export const editUserProfile = expressAsyncHandler(async (req, res) => {
   const profilePhoto = req.file;
   // IF PROFILE PHOTO WAS PROVIDED
   if (profilePhoto) {
+    // GETTING THE PUBLIC ID OF THE PREVIOUS PROFILE PHOTO OF THE USER
+    const imagePublicID = foundUser.profilePublicId;
+    // DESTROYING THE PREVIOUS PROFILE PICTURE OF THE USER
+    await cloudinary.uploader.destroy(imagePublicID);
     // GETTING THE DATA URI OF THE FILE FROM HANDLER
     const fileURI = getDataURI(profilePhoto);
     // CLOUDINARY UPLOAD
@@ -266,6 +271,32 @@ export const editUserProfile = expressAsyncHandler(async (req, res) => {
     success: true,
     user: foundUser,
   });
+});
+
+// <= DELETE AVATAR =>
+export const deleteAvatar = expressAsyncHandler(async (req, res) => {
+  // GETTING CURRENT LOGGED IN USER ID
+  const userId = req.id;
+  // FINDING THE USER IN THE USER MODEL THROUGH USER ID
+  const foundUser = await User.findById(userId).select("-password -__v").exec();
+  // IF USER NOT FOUND
+  if (!foundUser) {
+    return res.status(404).json({ message: "User Not Found!", success: false });
+  }
+  // GETTING THE PUBLIC ID OF THE PREVIOUS PROFILE PHOTO OF THE USER
+  const imagePublicID = foundUser.profilePublicId;
+  // DESTROYING THE PREVIOUS PROFILE PICTURE OF THE USER
+  await cloudinary.uploader.destroy(imagePublicID);
+  // UPDATING PROFILE PHOTO
+  foundUser.profilePhoto = "";
+  // UPDATING THE IMAGE PUBLIC ID
+  foundUser.profilePublicId = "";
+  // SAVING THE USER
+  await foundUser.save();
+  // RETURNING RESPONSE
+  return res
+    .status(200)
+    .json({ message: "Avatar Removed!", success: true, foundUser });
 });
 
 // <= GET SUGGESTED USERS =>
