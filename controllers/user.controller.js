@@ -127,29 +127,10 @@ export const userLogin = expressAsyncHandler(async (req, res) => {
   const token = jwt.sign(tokenData, process.env.TOKEN_SECRET_KEY, {
     expiresIn: "1d",
   });
-  // POPULATING USER POSTS WHEN LOGGING IN
-  const populatedUserPosts = await Promise.all(
-    foundUser.posts.map(async (postId) => {
-      const post = await Post.findById(postId);
-      if (post?.author.equals(foundUser._id)) {
-        return post;
-      }
-      return null;
-    })
-  );
-  // RETURNING LOGGED IN USER
-  const user = {
-    _id: foundUser._id,
-    fullName: foundUser.fullName,
-    email: foundUser.email,
-    username: foundUser.username,
-    bio: foundUser.bio,
-    profilePhoto: foundUser.profilePhoto,
-    followers: foundUser.followers,
-    following: foundUser.following,
-    bookmarks: foundUser.bookmarks,
-    posts: populatedUserPosts,
-  };
+  // SETTING USER TO RETURN
+  const user = await User.findById(foundUser._id)
+    .select("-password -__v")
+    .exec();
   return res
     .status(200)
     .cookie("token", token, {
@@ -243,7 +224,7 @@ export const editUserProfile = expressAsyncHandler(async (req, res) => {
     // GETTING THE PUBLIC ID OF THE PREVIOUS PROFILE PHOTO OF THE USER
     const imagePublicID = foundUser.profilePublicId;
     // DESTROYING THE PREVIOUS PROFILE PICTURE OF THE USER
-    await cloudinary.uploader.destroy(imagePublicID);
+    if (imagePublicID) await cloudinary.uploader.destroy(imagePublicID);
     // GETTING THE DATA URI OF THE FILE FROM HANDLER
     const fileURI = getDataURI(profilePhoto);
     // CLOUDINARY UPLOAD
@@ -265,11 +246,13 @@ export const editUserProfile = expressAsyncHandler(async (req, res) => {
   if (gender) foundUser.gender = gender;
   // SAVING THE USER
   await foundUser.save();
+  // SETTING THE USER TO RETURN
+  const user = await User.findById(userId).select("-password -__v").exec();
   // RETURNING RESPONSE
   return res.status(200).json({
     message: "Profile Updated Successfully!",
     success: true,
-    user: foundUser,
+    user,
   });
 });
 
@@ -293,10 +276,12 @@ export const deleteAvatar = expressAsyncHandler(async (req, res) => {
   foundUser.profilePublicId = "";
   // SAVING THE USER
   await foundUser.save();
+  // SETTING THE USER TO RETURN
+  const user = await User.findById(userId).select("-password -__v").exec();
   // RETURNING RESPONSE
   return res
     .status(200)
-    .json({ message: "Avatar Removed!", success: true, foundUser });
+    .json({ message: "Avatar Removed!", success: true, user });
 });
 
 // <= GET SUGGESTED USERS =>
