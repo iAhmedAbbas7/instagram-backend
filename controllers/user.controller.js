@@ -6,6 +6,7 @@ import { Post } from "../models/post.model.js";
 import { User } from "../models/user.model.js";
 import cloudinary from "../utils/cloudinary.js";
 import expressAsyncHandler from "express-async-handler";
+import mongoose from "mongoose";
 
 // <= USER REGISTRATION =>
 export const registerUser = expressAsyncHandler(async (req, res) => {
@@ -294,21 +295,111 @@ export const getSuggestedUsers = expressAsyncHandler(async (req, res) => {
   if (!foundUser) {
     return res.status(404).json({ message: "User Not Found!", success: false });
   }
-  // FINDING USERS NOT FOLLOWED BY CURRENT USER AND EXCLUDING CURRENT USER
-  const suggestedUsers = await User.find({
-    _id: { $nin: [...foundUser.following, userId] },
+  // 1 : FOLLOW BACK USERS => (PEOPLE FOLLOW ME THAT I DON'T FOLLOW)
+  const followBackUsers = await User.find({
+    _id: { $in: foundUser.followers, $nin: foundUser.following },
   })
     .select("-password -__v")
-    .limit(10)
-    .exec();
-  // IF NO SUGGESTED USERS FOUND
-  if (!suggestedUsers || suggestedUsers.length === 0) {
-    return res
-      .status(404)
-      .json({ message: "No Suggested Users at this Time!", success: false });
+    .lean();
+  // 2 :  MUTUAL FOLLOWERS => (HOW OFTEN USER APPEARS IN MY FOLLOWERS FOLLOWING)
+  const mutualFollowers = {};
+  // ANALYZING MY FOLLOWING
+  const myFollowing = await User.find({ _id: { $in: foundUser.following } })
+    .select("following")
+    .lean();
+  // CHECKING MUTUAL FOLLOWER CHECK FOR EACH OF MY FOLLOWER
+  myFollowing.forEach((follower) => {
+    follower.following.forEach((candidate) => {
+      // EXTRACTING THE EACH USER ID AS CANDIDATE ID
+      const candidateID = candidate.toString();
+      if (
+        // IF USER IS NOT ME
+        candidateID !== userId &&
+        // IF USER IS NOT IN MY FOLLOWING
+        !foundUser.following.includes(candidate) &&
+        // IF USER IS NOT FOLLOWED BY ME
+        !foundUser.followers.includes(candidate)
+      ) {
+        // SETTING USERS IN THE MUTUAL FOLLOWERS OBJECT
+        mutualFollowers[candidateID] = (mutualFollowers[candidateID] || 0) + 1;
+      }
+    });
+  });
+  // SETTING MUTUAL ID'S
+  const mutualIds = Object.entries(mutualFollowers)
+    .sort(([, a], [, b]) => b - a)
+    .map(([id]) => id)
+    .slice(0, 10);
+  // FINDING MUTUAL FOLLOWERS THROUGH MUTUAL ID'S
+  const mutual = await User.find({ _id: { $in: mutualIds } })
+    .select("-password -__v")
+    .lean();
+  // 3 : POPULAR FOLLOWERS => (FOLLOWERS WITH HIGHEST NUMBER OF FOLLOWERS NOT YET FOLLOWED)
+  const POPULAR_LIMIT = 10;
+  const popularUsers = await User.find({
+    _id: {
+      $nin: [...foundUser.following, ...foundUser.followers, userId],
+    },
+  })
+    .sort({ followers: -1 })
+    .limit(POPULAR_LIMIT)
+    .select("-password -__v")
+    .lean();
+  // 4 : RANDOM USERS => (IF WE DON'T HAVE REQUIRED NUMBER OF USERS)
+  const already = new Set([
+    userId,
+    ...foundUser.following.map(String),
+    ...foundUser.followers.map(String),
+    ...mutual.map((u) => u._id.toString()),
+    ...popularUsers.map((u) => u._id.toString()),
+    ...followBackUsers.map((u) => u._id.toString()),
+  ]);
+  // REQUIRED USERS
+  const needed = Math.max(
+    0,
+    10 - (followBackUsers.length + mutual.length + popularUsers.length)
+  );
+  // SETTING THE FILLER ARRAY
+  let filler = [];
+  // IF USERS ARE REQUIRED
+  if (needed > 0) {
+    filler = await User.aggregate([
+      {
+        $match: {
+          _id: {
+            $nin: Array.from(already).map(
+              (id) => new mongoose.Types.ObjectId(id)
+            ),
+          },
+        },
+      },
+      { $sample: { size: needed } },
+      { $project: { password: 0, __v: 0 } },
+    ]);
   }
+  // COMBINING THE USERS & REMOVING THE DUPLICATES
+  const combinedUsers = [
+    ...followBackUsers,
+    ...mutual,
+    ...popularUsers,
+    ...filler,
+  ];
+  // INITIATING A NEW SET FOR THE DUPLICATE USERS
+  const seenUsers = new Set();
+  // FILTERING THE COMBINED USERS
+  const users = combinedUsers
+    .filter((u) => {
+      // SETTING THE UD
+      const id = u._id.toString();
+      // IF THE USER IS ALREADY PRESENT, THEN SKIPPING IT
+      if (seenUsers.has(id)) return false;
+      // IF THE USER IS NOT ALREADY PRESENT, ADDING IT
+      seenUsers.add(id);
+      return true;
+    })
+    .slice(0, 10);
   // RETURNING RESPONSE
-  return res.status(200).json({ success: true, users: suggestedUsers });
+  return res.status(200).json({ success: true, users });
 });
 
 // <= FOLLOW/UNFOLLOW USER =>
