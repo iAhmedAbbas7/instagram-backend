@@ -15,6 +15,7 @@ import connectDB from "./config/dbConnection.js";
 import corsOptions from "./config/corsOptions.js";
 import { logEvents } from "./middleware/logger.js";
 import { getDirName } from "./utils/getDirName.js";
+import { app, server } from "./services/socket.js";
 import messageRoute from "./routes/message.route.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 
@@ -23,9 +24,6 @@ connectDB();
 
 // <= DIRNAME =>
 const __dirname = getDirName(import.meta.url);
-
-// <= APP =>
-const app = express();
 
 // <= PORT =>
 const PORT = process.env.PORT || 3000;
@@ -75,7 +73,7 @@ app.use(errorHandler);
 // <= DATABASE & SERVER CONNECTION LISTENER =>
 mongoose.connection.once("open", () => {
   console.log("Database Connection Established Successfully");
-  app.listen(PORT, () => {
+  server.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);
   });
 });
