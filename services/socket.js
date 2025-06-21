@@ -2,6 +2,7 @@
 import http from "http";
 import express from "express";
 import { Server } from "socket.io";
+import { User } from "../models/user.model.js";
 
 // <= CREATING APP INSTANCE =>
 const app = express();
@@ -36,10 +37,12 @@ io.on("connection", (socket) => {
   // EMITTING THE USER ONLINE EVENT
   io.emit("getOnlineUsers", Object.keys(userSocketMap));
   // ON SOCKET DISCONNECTION
-  socket.on("disconnect", () => {
+  socket.on("disconnect", async () => {
     if (userId) {
       // REMOVING THE USER FROM THE SOCKET MAP WITH IT'S CORRESPONDING SOCKET ID
       delete userSocketMap[userId];
+      // UPDATING THE USER LAST ACTIVE TIMESTAMP
+      await User.findByIdAndUpdate(userId, { lastActive: new Date() });
       // LOGGING THE DISCONNECTION MESSAGE
       console.log(
         `User Disconnected : UserId => ${userId} , SocketId => ${socket.id}`
