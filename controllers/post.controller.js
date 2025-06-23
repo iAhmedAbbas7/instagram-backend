@@ -5,6 +5,7 @@ import { User } from "../models/user.model.js";
 import cloudinary from "../utils/cloudinary.js";
 import { Comment } from "../models/comment.model.js";
 import expressAsyncHandler from "express-async-handler";
+import { getReceiverSocketId, io } from "../services/socket.js";
 
 // <= ADD NEW POST =>
 export const addNewPost = expressAsyncHandler(async (req, res) => {
@@ -158,6 +159,8 @@ export const likeOrUnlikePost = expressAsyncHandler(async (req, res) => {
   if (!foundPost) {
     return res.status(404).json({ message: "Post Not Found!", success: false });
   }
+  // SETTING POST AUTHOR ID
+  const postAuthorId = foundPost.author.toString();
   // ADDING OR REMOVING THE USER ID FROM THE LIKES ARRAY
   if (foundPost.likes.includes(userId)) {
     // IF USER HAS ALREADY LIKED THE POST, THEN UNLIKE IT
@@ -167,6 +170,28 @@ export const likeOrUnlikePost = expressAsyncHandler(async (req, res) => {
   } else {
     // IF USER HAS NOT ALREADY LIKED, THEN ;IKE IT
     foundPost.likes.push(userId);
+    // SENDING THE REAL TIME NOTIFICATION FOR LIKE EXCEPT FOR OWN POST LIKE
+    if (postAuthorId !== userId) {
+      // RECEIVER USER INFORMATION
+      const likingUser = await User.findById(userId)
+        .select("-password -__v")
+        .exec();
+      // CREATING NOTIFICATION OBJECT
+      const notification = {
+        type: "like",
+        userId,
+        likingUser,
+        postId,
+        message: `${likingUser.username} liked your post`,
+      };
+      // GETTING POST AUTHOR SOCKET ID
+      const postAuthorSocketId = getReceiverSocketId(postAuthorId);
+      // IF THE SOCKET ID EXISTS
+      if (postAuthorSocketId) {
+        // EMITTING REAL TIME NOTIFICATION FOR THE EVENT
+        io.to(postAuthorSocketId).emit("notification", notification);
+      }
+    }
   }
   // SAVING THE POST
   await foundPost.save();

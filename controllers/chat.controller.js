@@ -2,6 +2,7 @@
 import { Message } from "../models/message.model.js";
 import expressAsyncHandler from "express-async-handler";
 import { Conversation } from "../models/conversation.model.js";
+import { getReceiverSocketId, io } from "../services/socket.js";
 
 // <= SEND MESSAGE =>
 export const sendMessage = expressAsyncHandler(async (req, res) => {
@@ -37,8 +38,26 @@ export const sendMessage = expressAsyncHandler(async (req, res) => {
     newConversation.messages.push(newMessage._id);
     // SAVING THE CONVERSATION
     await newConversation.save();
+    // POPULATING THE CREATED MESSAGE
+    const populatedMessage = await Message.findById(newMessage._id)
+      .populate({
+        path: "senderId",
+        select: "username fullName profilePhoto followers following posts",
+      })
+      .populate({
+        path: "receiverId",
+        select: "username fullName profilePhoto followers following posts",
+      })
+      .exec();
+    // GETTING RECEIVER SOCKET ID
+    const receiverSocketId = getReceiverSocketId(receiverId);
+    // IF RECEIVER SOCKET ID EXISTS
+    if (receiverSocketId) {
+      // EMITTING THE NEW MESSAGE EVENT TO THE RECEIVER
+      io.to(receiverSocketId).emit("newMessage", populatedMessage);
+    }
     // RETURNING RESPONSE
-    return res.status(201).json({ success: true, newMessage });
+    return res.status(201).json({ success: true, populatedMessage });
   } else {
     // CREATING THE MESSAGE
     const newMessage = await Message.create({
@@ -50,8 +69,26 @@ export const sendMessage = expressAsyncHandler(async (req, res) => {
     haveConversation.messages.push(newMessage._id);
     // SAVING THE CONVERSATION
     await haveConversation.save();
+    // POPULATING THE CREATED MESSAGE
+    const populatedMessage = await Message.findById(newMessage._id)
+      .populate({
+        path: "senderId",
+        select: "-password -__v",
+      })
+      .populate({
+        path: "receiverId",
+        select: "-password -__v",
+      })
+      .exec();
+    // GETTING RECEIVER SOCKET ID
+    const receiverSocketId = getReceiverSocketId(receiverId);
+    // IF RECEIVER SOCKET ID EXISTS
+    if (receiverSocketId) {
+      // EMITTING THE NEW MESSAGE EVENT TO THE RECEIVER
+      io.to(receiverSocketId).emit("newMessage", populatedMessage);
+    }
     // RETURNING RESPONSE
-    return res.status(201).json({ success: true, newMessage });
+    return res.status(201).json({ success: true, populatedMessage });
   }
 });
 
@@ -64,6 +101,18 @@ export const getAllMessages = expressAsyncHandler(async (req, res) => {
   // CHECKING IF THEY HAVE AN ACTIVE CONVERSATION
   const conversation = await Conversation.findOne({
     participants: { $all: [userId, receiverId] },
+  }).populate({
+    path: "messages",
+    populate: [
+      {
+        path: "senderId",
+        select: "-password -__v",
+      },
+      {
+        path: "receiverId",
+        select: "-password -__v",
+      },
+    ],
   });
   // IF THEY DO NOT HAVE AN ACTIVE CONVERSATION THEN SENDING EMPTY MESSAGES ARRAY
   if (!conversation)

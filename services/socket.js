@@ -21,6 +21,9 @@ const io = new Server(server, {
 // <= SOCKET MAP FOR USERS ID'S =>
 const userSocketMap = {};
 
+// <= UTILITY FUNCTION TO GET THE RECEIVER SOCKET ID =>
+export const getReceiverSocketId = (receiverId) => userSocketMap[receiverId];
+
 // <= ESTABLISHING SOCKET CONNECTION =>
 io.on("connection", (socket) => {
   // SETTING USER ID
