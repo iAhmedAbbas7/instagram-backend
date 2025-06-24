@@ -5,7 +5,7 @@ import { User } from "../models/user.model.js";
 import cloudinary from "../utils/cloudinary.js";
 import { Comment } from "../models/comment.model.js";
 import expressAsyncHandler from "express-async-handler";
-import { getReceiverSocketId, io } from "../services/socket.js";
+import { getReceiverSocketId, io, userSocketMap } from "../services/socket.js";
 
 // <= ADD NEW POST =>
 export const addNewPost = expressAsyncHandler(async (req, res) => {
@@ -161,37 +161,50 @@ export const likeOrUnlikePost = expressAsyncHandler(async (req, res) => {
   }
   // SETTING POST AUTHOR ID
   const postAuthorId = foundPost.author.toString();
+  // CHECKING IF ALREADY LIKED BY THE CURRENT USER
+  const isAlreadyLiked = foundPost.likes.includes(userId);
   // ADDING OR REMOVING THE USER ID FROM THE LIKES ARRAY
-  if (foundPost.likes.includes(userId)) {
+  if (isAlreadyLiked) {
     // IF USER HAS ALREADY LIKED THE POST, THEN UNLIKE IT
     foundPost.likes = foundPost.likes.filter(
       (like) => like.toString() !== userId
     );
   } else {
-    // IF USER HAS NOT ALREADY LIKED, THEN ;IKE IT
+    // IF USER HAS NOT ALREADY LIKED, THEN LIKE IT
     foundPost.likes.push(userId);
-    // SENDING THE REAL TIME NOTIFICATION FOR LIKE EXCEPT FOR OWN POST LIKE
-    if (postAuthorId !== userId) {
-      // RECEIVER USER INFORMATION
-      const likingUser = await User.findById(userId)
-        .select("-password -__v")
-        .exec();
-      // CREATING NOTIFICATION OBJECT
-      const notification = {
-        type: "like",
-        userId,
-        likingUser,
-        postId,
-        message: `${likingUser.username} liked your post`,
-      };
-      // GETTING POST AUTHOR SOCKET ID
-      const postAuthorSocketId = getReceiverSocketId(postAuthorId);
-      // IF THE SOCKET ID EXISTS
-      if (postAuthorSocketId) {
-        // EMITTING REAL TIME NOTIFICATION FOR THE EVENT
-        io.to(postAuthorSocketId).emit("notification", notification);
+  }
+  // CURRENT ACTION PERFORMER
+  const actingUser = await User.findById(userId)
+    .select("-password -__v")
+    .exec();
+  // BUILDING THE NOTIFICATION OBJECT BASED ON THE ACTION PERFORMED BY THE USER
+  const notification = {
+    type: isAlreadyLiked ? "dislike" : "like",
+    userId,
+    postId,
+    postAuthorId,
+    [`${isAlreadyLiked ? "dislikingUser" : "likingUser"}`]: actingUser,
+    message: isAlreadyLiked
+      ? `${actingUser.username} Disliked your Post!`
+      : `${actingUser.username} Liked your Post!`,
+  };
+  // EMITTING THE REAL TIME NOTIFICATION FOR THE ACTION
+  if (postAuthorId === userId) {
+    // GETTING POST AUTHOR ID
+    const mySocketId = getReceiverSocketId(userId);
+    // EMITTING TO EVERYONE EXCEPT THE USER FOR THEIR OWN POST ACTION
+    Object.values(userSocketMap).forEach((socketId) => {
+      if (socketId !== mySocketId) {
+        // EMITTING TO EVERYONE EXCEPT THE POST
+        io.to(socketId).emit("notification", notification);
       }
-    }
+    });
+  } else {
+    // EMITTING TO EVERYONE
+    Object.values(userSocketMap).forEach((socketId) => {
+      // EMITTING TO EVERYONE
+      io.to(socketId).emit("notification", notification);
+    });
   }
   // SAVING THE POST
   await foundPost.save();
@@ -230,6 +243,8 @@ export const postComment = expressAsyncHandler(async (req, res) => {
   if (!foundPost) {
     return res.status(404).json({ message: "Post Not Found!", success: false });
   }
+  // SETTING POST AUTHOR ID
+  const postAuthorId = foundPost.author.toString();
   // CREATING A NEW COMMENT
   const comment = await Comment.create({
     text,
@@ -245,6 +260,22 @@ export const postComment = expressAsyncHandler(async (req, res) => {
   foundPost.comments.push(comment._id);
   // SAVING THE POST
   await foundPost.save();
+  // BUILDING THE NOTIFICATION OBJECT
+  const notification = {
+    type: "comment",
+    userId,
+    postId,
+    postAuthorId,
+    commentingUser: comment.author,
+    commentId: comment._id,
+    message: `${comment.author.username} Commented on your Post!`,
+  };
+  // SETTING PAYLOAD FOR THE EVENT
+  const payload = { notification, comment };
+  // EMITTING EVENT TO ALL ACTIVE SOCKETS
+  Object.values(userSocketMap).forEach((socketId) => {
+    io.to(socketId).emit("comment", payload);
+  });
   // RETURNING RESPONSE
   return res
     .status(201)

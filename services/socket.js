@@ -19,7 +19,7 @@ const io = new Server(server, {
 });
 
 // <= SOCKET MAP FOR USERS ID'S =>
-const userSocketMap = {};
+export const userSocketMap = {};
 
 // <= UTILITY FUNCTION TO GET THE RECEIVER SOCKET ID =>
 export const getReceiverSocketId = (receiverId) => userSocketMap[receiverId];
