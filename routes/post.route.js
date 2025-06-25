@@ -7,6 +7,7 @@ import {
   bookOrUnBookmarkPost,
   deletePost,
   getAllPosts,
+  getPostById,
   getPostComments,
   getPostLikes,
   getUserPosts,
@@ -18,6 +19,7 @@ import {
 const router = express.Router();
 
 // <= ROUTES =>
+router.get("/:id/post", isAuthenticated, getPostById);
 router.get("/:id/likes", isAuthenticated, getPostLikes);
 router.get("/getAllPosts", isAuthenticated, getAllPosts);
 router.get("/allUserPosts", isAuthenticated, getUserPosts);

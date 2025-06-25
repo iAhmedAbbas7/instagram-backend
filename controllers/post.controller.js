@@ -108,6 +108,33 @@ export const getAllPosts = expressAsyncHandler(async (req, res) => {
   return res.status(200).json({ success: true, posts });
 });
 
+// <= GET POST BY ID =>
+export const getPostById = expressAsyncHandler(async (req, res) => {
+  // GETTING THE CURRENT LOGGED IN USER ID
+  const userId = req.id;
+  // GETTING THE POST ID FROM REQUEST PARAMS
+  const postId = req.params.id;
+  // FINDING THE USER IN THE USER MODEL THROUGH USER ID
+  const foundUser = await User.findById(userId).exec();
+  // IF USER NOT FOUND
+  if (!foundUser) {
+    return res.status(404).json({ message: "User Not Found!", success: false });
+  }
+  // FINDING THE POST THROUGH POST ID
+  const foundPost = await Post.findById(postId)
+    .populate({
+      path: "author",
+      select: "username fullName profilePhoto followers following posts",
+    })
+    .exec();
+  // IF POST NOT FOUND
+  if (!foundPost) {
+    return res.status(404).json({ message: "Post Not Found!", success: false });
+  }
+  // RETURNING POST
+  return res.status(200).json({ success: true, post: foundPost });
+});
+
 // <= GET USER POSTS =>
 export const getUserPosts = expressAsyncHandler(async (req, res) => {
   // GETTING THE CURRENT LOGGED IN USER ID
