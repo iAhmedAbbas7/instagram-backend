@@ -370,6 +370,40 @@ export const getPostLikes = expressAsyncHandler(async (req, res) => {
   return res.status(200).json({ success: true, likes: foundPost.likes });
 });
 
+// <= EDIT POST =>
+export const editPost = expressAsyncHandler(async (req, res) => {
+  // GETTING THE CURRENT LOGGED IN USER ID
+  const userId = req.id;
+  // GETTING THE POST ID FROM REQUEST PARAMS
+  const postId = req.params.id;
+  // GETTING POST CAPTION FROM REQUEST BODY
+  const { caption } = req.body;
+  // FINDING THE USER IN THE USER MODEL THROUGH USER ID
+  const foundUser = await User.findById(userId).exec();
+  // IF USER NOT FOUND
+  if (!foundUser) {
+    return res.status(404).json({ message: "User Not Found!", success: false });
+  }
+  // FINDING THE POST THROUGH POST ID
+  const foundPost = await Post.findById(postId).exec();
+  // IF POST NOT FOUND
+  if (!foundPost) {
+    return res.status(404).json({ message: "Post Not Found!", success: false });
+  }
+  // CHECKING IF THE POST BELONGS TO THE USER
+  if (foundPost.author.toString() !== userId) {
+    return res.status(403).json({ message: "Access Denied!", success: false });
+  }
+  // SAVING THE UPDATED CAPTION FOR THE POST
+  foundPost.caption = caption;
+  // SAVING THE POST
+  await foundPost.save();
+  // RETURNING RESPONSE
+  return res
+    .status(200)
+    .json({ message: "Post Updated Successfully!", success: true });
+});
+
 // <= DELETE POST =>
 export const deletePost = expressAsyncHandler(async (req, res) => {
   // GETTING THE CURRENT LOGGED IN USER ID
