@@ -23,7 +23,7 @@ router.post("/register", registerUser);
 router.get("/:id/profile", isAuthenticated, getUserProfile);
 router.delete("/deleteAvatar", isAuthenticated, deleteAvatar);
 router.get("/suggestedUsers", isAuthenticated, getSuggestedUsers);
-router.post("/followOrUnfollow/:id", isAuthenticated, followOrUnfollowUser);
+router.get("/followOrUnfollow/:id", isAuthenticated, followOrUnfollowUser);
 router.post("/profile/edit", isAuthenticated, singleUpload, editUserProfile);
 
 export default router;

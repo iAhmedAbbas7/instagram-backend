@@ -7,6 +7,7 @@ import { User } from "../models/user.model.js";
 import cloudinary from "../utils/cloudinary.js";
 import expressAsyncHandler from "express-async-handler";
 import mongoose from "mongoose";
+import { getReceiverSocketId, io } from "../services/socket.js";
 
 // <= USER REGISTRATION =>
 export const registerUser = expressAsyncHandler(async (req, res) => {
@@ -446,9 +447,24 @@ export const followOrUnfollowUser = expressAsyncHandler(async (req, res) => {
     // SAVING THE USERS
     await followingUser.save();
     await followedUser.save();
+    // CREATING THE NOTIFICATION OBJECT
+    const notification = {
+      type: "unfollow",
+      followingUserId: followingUserId,
+      followedUserId: followedUserId,
+      followingUser,
+      message: `${followingUser.username} removed You from their Following!`,
+    };
+    // GETTING THE FOLLOWED USER SOCKET ID
+    const followedSocketId = getReceiverSocketId(followedUserId);
+    // IF FOLLOWED SOCKET ID EXISTS
+    if (followedSocketId) {
+      // EMITTING REAL TIME NOTIFICATION FOR THE EVENT
+      io.to(followedSocketId).emit("followAction", notification);
+    }
     // RETURNING RESPONSE
     return res.status(200).json({
-      message: `User ${followedUser.fullName} Unfollowed Successfully!`,
+      message: `User ${followedUser.username} Removed from Following`,
       success: true,
     });
   } else {
@@ -459,9 +475,24 @@ export const followOrUnfollowUser = expressAsyncHandler(async (req, res) => {
     // SAVING THE USERS
     await followingUser.save();
     await followedUser.save();
+    // CREATING THE NOTIFICATION OBJECT
+    const notification = {
+      type: "follow",
+      followingUserId: followingUserId,
+      followedUserId: followedUserId,
+      followingUser,
+      message: `${followingUser.username} started Following You!`,
+    };
+    // GETTING THE FOLLOWED USER SOCKET ID
+    const followedSocketId = getReceiverSocketId(followedUserId);
+    // IF FOLLOWED SOCKET ID EXISTS
+    if (followedSocketId) {
+      // EMITTING REAL TIME NOTIFICATION FOR THE EVENT
+      io.to(followedSocketId).emit("followAction", notification);
+    }
     // RETURNING RESPONSE
     return res.status(200).json({
-      message: `User ${followedUser.fullName} Followed Successfully!`,
+      message: `You Started Following ${followedUser.username}`,
       success: true,
     });
   }
