@@ -21,5 +21,12 @@ const userSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+// <= TEXT INDEX FOR SEARCHING =>
+userSchema.index(
+  { username: "text", fullName: "text" },
+  { name: "UserTextIndex", default_language: "none" },
+  { weights: { username: 5, fullName: 3 } }
+);
+
 // <= EXPORTING THE USER SCHEMA =>
 export const User = mongoose.model("User", userSchema);

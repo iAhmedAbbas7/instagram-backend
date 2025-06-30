@@ -156,6 +156,74 @@ export const userLogout = expressAsyncHandler(async (_, res) => {
     .json({ message: "User Logged Out Successfully!", success: true });
 });
 
+// <= SEARCH USERS =>
+export const searchUsers = expressAsyncHandler(async (req, res) => {
+  // GETTING CURRENT LOGGED IN USER ID
+  const userId = req.id;
+  // GETTING SEARCH QUERY FROM REQUEST PARAMS
+  const query = (req.query.q || "").trim();
+  // IF QUERY IS NOT PROVIDED
+  if (!query) {
+    return res
+      .status(400)
+      .json({ message: "Search Query is Required!", success: false });
+  }
+  // FINDING THE USER IN THE USER MODEL THROUGH USER ID
+  const foundUser = await User.findById(userId)
+    .select("followers following")
+    .lean();
+  // IF USER NOT FOUND
+  if (!foundUser) {
+    return res.status(404).json({ message: "User Not Found!", success: false });
+  }
+  // SETTING PRIORITY FOR THE SEARCH
+  const priorityIds = Array.from(
+    new Set([...(foundUser.followers || []), ...(foundUser.following || [])])
+  ).map((id) => new mongoose.Types.ObjectId(id));
+  // REGEX QUERY
+  const regex = new RegExp(query, "i");
+  // SETTING BASE FILTER FOR SEARCH
+  const baseFilter = {
+    $or: [{ username: { $regex: regex } }, { fullName: { $regex: regex } }],
+  };
+  // SETTING PROJECTION FOR SEARCH
+  const projection = {
+    password: 0,
+    __v: 0,
+  };
+  // MAKING PRIORITY SEARCH WITH QUERY
+  const prioritySearchResults = await User.find(
+    {
+      ...baseFilter,
+      _id: { $in: priorityIds },
+    },
+    projection
+  )
+    .limit(5)
+    .lean();
+  // SETTING RESULTS
+  let results = prioritySearchResults;
+  // IF RESULTS LESS THAN 5, THEN FILLING UP WITH OTHER USERS
+  if (results.length < 5) {
+    // EXCLUDING FORM THE SEARCH
+    const excludedIds = priorityIds;
+    // FINDING OTHER USERS
+    const otherUsers = await User.find(
+      {
+        ...baseFilter,
+        _id: { $nin: excludedIds },
+      },
+      projection
+    )
+      .limit(5 - results.length)
+      .lean();
+    // COMBINING THE RESULTS
+    results = results.concat(otherUsers);
+  }
+  // RETURNING RESPONSE
+  return res.status(200).json({ success: true, users: results });
+});
+
 // <= GETTING USER PROFILE =>
 export const getUserProfile = expressAsyncHandler(async (req, res) => {
   // GETTING USER ID FROM THE REQUEST PARAMS

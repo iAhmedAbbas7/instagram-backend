@@ -9,6 +9,7 @@ import {
   getSuggestedUsers,
   getUserProfile,
   registerUser,
+  searchUsers,
   userLogin,
   userLogout,
 } from "../controllers/user.controller.js";
@@ -20,6 +21,7 @@ const router = express.Router();
 router.post("/login", userLogin);
 router.get("/logout", userLogout);
 router.post("/register", registerUser);
+router.get("/search", isAuthenticated, searchUsers);
 router.get("/:id/profile", isAuthenticated, getUserProfile);
 router.delete("/deleteAvatar", isAuthenticated, deleteAvatar);
 router.get("/suggestedUsers", isAuthenticated, getSuggestedUsers);
