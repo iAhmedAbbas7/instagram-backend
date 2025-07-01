@@ -168,6 +168,39 @@ export const getUserPosts = expressAsyncHandler(async (req, res) => {
   return res.status(200).json({ success: true, posts });
 });
 
+// <= GET RECENT POSTS =>
+export const getRecentPosts = expressAsyncHandler(async (req, res) => {
+  // GETTING THE CURRENT LOGGED IN USER ID
+  const userId = req.id;
+  // GETTING THE ID OF THE YSER WHOSE POSTS ARE REQUESTED FROM REQUEST PARAMS
+  const requestedUserId = req.params.id;
+  // FINDING THE USER IN THE USER MODEL THROUGH USER ID
+  const foundUser = await User.findById(userId).exec();
+  // IF USER NOT FOUND
+  if (!foundUser) {
+    return res.status(404).json({ message: "User Not Found!", success: false });
+  }
+  // FINDING THE USER WHOSE POSTS ARE REQUIRED
+  const requestedUser = await User.findById(requestedUserId).exec();
+  // IF USER NOT FOUND
+  if (!requestedUser) {
+    return res
+      .status(404)
+      .json({ message: "Requested User Not Found!", success: false });
+  }
+  // GETTING THE POSTS OF THE REQUESTED USER
+  const posts = await Post.find({ author: requestedUser })
+    .sort({ createdAt: -1 })
+    .limit(3)
+    .select("image");
+  // IF NO POSTS FOUND
+  if (!posts || posts.length === 0) {
+    return res.status(404).json({ message: "No Posts Found!", success: false });
+  }
+  // RETURNING RESPONSE
+  return res.status(200).json({ success: true, posts });
+});
+
 // <= LIKE POST =>
 export const likeOrUnlikePost = expressAsyncHandler(async (req, res) => {
   // GETTING THE CURRENT LOGGED IN USER ID
