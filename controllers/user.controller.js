@@ -521,7 +521,8 @@ export const followOrUnfollowUser = expressAsyncHandler(async (req, res) => {
       followingUserId: followingUserId,
       followedUserId: followedUserId,
       followingUser,
-      message: `${followingUser.username} removed You from their Following!`,
+      message: `${followingUser.username} removed You from their Following`,
+      createdAt: new Date(),
     };
     // GETTING THE FOLLOWED USER SOCKET ID
     const followedSocketId = getReceiverSocketId(followedUserId);
@@ -549,7 +550,8 @@ export const followOrUnfollowUser = expressAsyncHandler(async (req, res) => {
       followingUserId: followingUserId,
       followedUserId: followedUserId,
       followingUser,
-      message: `${followingUser.username} started Following You!`,
+      message: `${followingUser.username} started Following You`,
+      createdAt: new Date(),
     };
     // GETTING THE FOLLOWED USER SOCKET ID
     const followedSocketId = getReceiverSocketId(followedUserId);

@@ -212,8 +212,9 @@ export const likeOrUnlikePost = expressAsyncHandler(async (req, res) => {
     postAuthorId,
     [`${isAlreadyLiked ? "dislikingUser" : "likingUser"}`]: actingUser,
     message: isAlreadyLiked
-      ? `${actingUser.username} Disliked your Post!`
-      : `${actingUser.username} Liked your Post!`,
+      ? `${actingUser.username} Disliked your Post`
+      : `${actingUser.username} Liked your Post`,
+    createdAt: new Date(),
   };
   // EMITTING THE REAL TIME NOTIFICATION FOR THE ACTION
   if (postAuthorId === userId) {
@@ -295,7 +296,8 @@ export const postComment = expressAsyncHandler(async (req, res) => {
     postAuthorId,
     commentingUser: comment.author,
     commentId: comment._id,
-    message: `${comment.author.username} Commented on your Post!`,
+    message: `${comment.author.username} Commented on your Post`,
+    createdAt: new Date(),
   };
   // SETTING PAYLOAD FOR THE EVENT
   const payload = { notification, comment };
