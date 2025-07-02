@@ -126,6 +126,14 @@ export const getPostById = expressAsyncHandler(async (req, res) => {
       path: "author",
       select: "username fullName profilePhoto followers following posts",
     })
+    .populate({
+      path: "comments",
+      sort: { createdAt: -1 },
+      populate: {
+        path: "author",
+        select: "username fullName profilePhoto followers following posts",
+      },
+    })
     .exec();
   // IF POST NOT FOUND
   if (!foundPost) {
