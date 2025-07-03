@@ -8,6 +8,7 @@ import {
   deletePost,
   editPost,
   getAllPosts,
+  getOtherPostsByUser,
   getPostById,
   getPostComments,
   getPostLikes,
@@ -21,6 +22,11 @@ import {
 const router = express.Router();
 
 // <= ROUTES =>
+router.get(
+  "/author/:authorId/others/:excludedId",
+  isAuthenticated,
+  getOtherPostsByUser
+);
 router.post("/:id/edit", isAuthenticated, editPost);
 router.get("/:id/post", isAuthenticated, getPostById);
 router.get("/:id/likes", isAuthenticated, getPostLikes);

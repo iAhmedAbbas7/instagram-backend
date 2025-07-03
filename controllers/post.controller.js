@@ -209,6 +209,55 @@ export const getRecentPosts = expressAsyncHandler(async (req, res) => {
   return res.status(200).json({ success: true, posts });
 });
 
+// <= GET OTHER POSTS BY USER =>
+export const getOtherPostsByUser = expressAsyncHandler(async (req, res) => {
+  // GETTING THE CURRENT LOGGED IN USER ID
+  const userId = req.id;
+  // GETTING THE EXCLUDED POST ID FROM REQUEST PARAMS
+  const excludedPostId = req.params.excludedId;
+  // GETTING POST AUTHOR ID FROM REQUEST PARAMS
+  const authorId = req.params.authorId;
+  // FINDING THE USER IN THE USER MODEL THROUGH USER ID
+  const foundUser = await User.findById(userId).exec();
+  // IF USER NOT FOUND
+  if (!foundUser) {
+    return res.status(404).json({ message: "User Not Found!", success: false });
+  }
+  // FINDING AUTHOR IN THE USER MODEL THROUGH AUTHOR ID
+  const author = await User.findById(authorId).exec();
+  // IF AUTHOR NOT FOUND
+  if (!author) {
+    return res
+      .status(404)
+      .json({ message: "Author Not Found!", success: false });
+  }
+  // FINDING POSTS FOR THE AUTHOR
+  const posts = await Post.find({
+    author: authorId,
+    _id: { $ne: excludedPostId },
+  })
+    .sort({ createdAt: -1 })
+    .limit(6)
+    .populate({
+      path: "author",
+      select: "username fullName profilePhoto followers following posts",
+    })
+    .populate({
+      path: "comments",
+      sort: { createdAt: -1 },
+      populate: {
+        path: "author",
+        select: "username fullName profilePhoto followers following posts",
+      },
+    });
+  // IF NO POSTS FOUND
+  if (!posts || posts.length === 0) {
+    return res.status(200).json({ success: true, posts: [] });
+  }
+  // RETURNING RESPONSE
+  return res.status(200).json({ success: true, posts });
+});
+
 // <= LIKE POST =>
 export const likeOrUnlikePost = expressAsyncHandler(async (req, res) => {
   // GETTING THE CURRENT LOGGED IN USER ID
