@@ -34,7 +34,7 @@ router.get("/getAllPosts", isAuthenticated, getAllPosts);
 router.get("/allUserPosts", isAuthenticated, getUserPosts);
 router.delete("/:id/deletePost", isAuthenticated, deletePost);
 router.post("/:id/postComment", isAuthenticated, postComment);
-router.get("/:id/allComments", isAuthenticated, getPostComments);
+router.get("/:id/comments", isAuthenticated, getPostComments);
 router.get("/:id/getRecentPosts", isAuthenticated, getRecentPosts);
 router.get("/likeOrUnlike/:id", isAuthenticated, likeOrUnlikePost);
 router.post("/addPost", isAuthenticated, singleUpload, addNewPost);

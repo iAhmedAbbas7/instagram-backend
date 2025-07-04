@@ -122,17 +122,10 @@ export const getPostById = expressAsyncHandler(async (req, res) => {
   }
   // FINDING THE POST THROUGH POST ID
   const foundPost = await Post.findById(postId)
+    .select("-comments")
     .populate({
       path: "author",
       select: "username fullName profilePhoto followers following posts",
-    })
-    .populate({
-      path: "comments",
-      sort: { createdAt: -1 },
-      populate: {
-        path: "author",
-        select: "username fullName profilePhoto followers following posts",
-      },
     })
     .exec();
   // IF POST NOT FOUND
@@ -207,6 +200,45 @@ export const getRecentPosts = expressAsyncHandler(async (req, res) => {
   }
   // RETURNING RESPONSE
   return res.status(200).json({ success: true, posts });
+});
+
+// <= GET POST COMMENTS =>
+export const getPostComments = expressAsyncHandler(async (req, res) => {
+  // GETTING THE CURRENT LOGGED IN USER ID
+  const userId = req.id;
+  // GETTING POST ID FROM REQUEST PARAMS
+  const postId = req.params.id;
+  // GETTING LIMIT & CURSOR FORM REQUEST QUERY
+  const { limit = 10, cursor } = req.query;
+  // FINDING THE USER IN THE USER MODEL THROUGH USER ID
+  const foundUser = await User.findById(userId).exec();
+  // IF USER NOT FOUND
+  if (!foundUser) {
+    return res.status(404).json({ message: "User Not Found!", success: false });
+  }
+  // TOTAL COUNT OF COMMENTS FOR THE POST
+  const totalComments = await Comment.countDocuments({ post: postId });
+  // BUILDING QUERY OBJECT
+  const query = { post: postId };
+  // IF CURSOR IS PROVIDED, ONLY COMMENTS OLDER THAN THAT
+  if (cursor) query.createdAt = { $lt: new Date(cursor) };
+  // FETCHING THE NEXT PAGE OF COMMENTS
+  const comments = await Comment.find(query)
+    .sort({ createdAt: -1 })
+    .limit(parseInt(limit, 10))
+    .populate(
+      "author",
+      "username fullName profilePhoto posts followers following"
+    )
+    .exec();
+  // DETERMINING THE NEXT CURSOR BASED ON THE TIMESTAMP F THE LAST ITEM
+  const nextCursor = comments.length
+    ? comments[comments.length - 1].createdAt.toISOString()
+    : null;
+  // RETURNING RESPONSE
+  return res
+    .status(200)
+    .json({ success: true, comments, nextCursor, totalComments });
 });
 
 // <= GET OTHER POSTS BY USER =>
@@ -399,38 +431,6 @@ export const postComment = expressAsyncHandler(async (req, res) => {
   return res
     .status(201)
     .json({ message: "Comment Posted!", success: true, comment });
-});
-
-// <= GET COMMENTS FOR A POST =>
-export const getPostComments = expressAsyncHandler(async (req, res) => {
-  // GETTING THE CURRENT LOGGED IN USER ID
-  const userId = req.id;
-  // GETTING THE POST ID FROM REQUEST PARAMS
-  const postId = req.params.id;
-  // FINDING THE USER IN THE USER MODEL THROUGH USER ID
-  const foundUser = await User.findById(userId).exec();
-  // IF USER NOT FOUND
-  if (!foundUser) {
-    return res.status(404).json({ message: "User Not Found!", success: false });
-  }
-  // FINDING THE POST THROUGH POST ID
-  const foundPost = await Post.findById(postId).exec();
-  // IF POST NOT FOUND
-  if (!foundPost) {
-    return res.status(404).json({ message: "Post Not Found!", success: false });
-  }
-  // GETTING ALL COMMENTS FOR THE POST
-  const comments = await Comment.find({ post: postId })
-    .sort({ createdAt: -1 })
-    .populate("author", "username profilePhoto");
-  // IF NO COMMENTS FOUND
-  if (!comments) {
-    return res
-      .status(404)
-      .json({ message: "No Comments Found!", success: false });
-  }
-  // RETURNING RESPONSE
-  return res.status(200).json({ success: true, comments });
 });
 
 // <= GET POST LIKES =>
