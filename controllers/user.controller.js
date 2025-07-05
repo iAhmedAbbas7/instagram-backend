@@ -88,27 +88,32 @@ export const registerUser = expressAsyncHandler(async (req, res) => {
 // <= USER LOGIN =>
 export const userLogin = expressAsyncHandler(async (req, res) => {
   // GETTING USER DATA FROM REQUEST BODY
-  const { email, password } = req.body;
+  const { identifier, password } = req.body;
   // VALIDATING USER DATA
-  if (!email && !password) {
-    return res
-      .status(400)
-      .json({ message: "Email & Password are Required!", success: false });
+  if (!identifier && !password) {
+    return res.status(400).json({
+      message: "Email or Username & Password are Required!",
+      success: false,
+    });
   }
   // IF EMAIL IS NOT PROVIDED
-  if (!email && password) {
+  if (!identifier && password) {
     return res
       .status(400)
-      .json({ message: "Email is Required!", success: false });
+      .json({ message: "Email or Username is Required!", success: false });
   }
   // IF PASSWORD IS NOT PROVIDED
-  if (email && !password) {
+  if (identifier && !password) {
     return res
       .status(400)
       .json({ message: "Password is Required!", success: false });
   }
-  // FINDING THE USER IN THE USER MODEL THROUGH EMAIL
-  const foundUser = await User.findOne({ email }).lean().exec();
+  // FINDING THE USER IN THE USER MODEL THROUGH IDENTIFIER
+  const foundUser = await User.findOne({
+    $or: [{ email: identifier }, { username: identifier }],
+  })
+    .lean()
+    .exec();
   // IF USER NOT FOUND
   if (!foundUser) {
     return res.status(404).json({ message: "User Not Found!", success: false });
