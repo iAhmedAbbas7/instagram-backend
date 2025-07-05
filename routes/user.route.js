@@ -3,6 +3,7 @@ import express from "express";
 import { singleUpload } from "../middleware/multer.js";
 import isAuthenticated from "../middleware/isAuthenticated.js";
 import {
+  checkUsernameAvailability,
   deleteAvatar,
   editUserProfile,
   followOrUnfollowUser,
@@ -22,6 +23,7 @@ router.post("/login", userLogin);
 router.get("/logout", userLogout);
 router.post("/register", registerUser);
 router.get("/search", isAuthenticated, searchUsers);
+router.get("/checkUsername", checkUsernameAvailability);
 router.get("/:id/profile", isAuthenticated, getUserProfile);
 router.delete("/deleteAvatar", isAuthenticated, deleteAvatar);
 router.get("/suggestedUsers", isAuthenticated, getSuggestedUsers);

@@ -1,12 +1,11 @@
 // <= IMPORTS =>
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import mongoose from "mongoose";
 import getDataURI from "../utils/dataURI.js";
-import { Post } from "../models/post.model.js";
 import { User } from "../models/user.model.js";
 import cloudinary from "../utils/cloudinary.js";
 import expressAsyncHandler from "express-async-handler";
-import mongoose from "mongoose";
 import { getReceiverSocketId, io } from "../services/socket.js";
 
 // <= USER REGISTRATION =>
@@ -84,6 +83,26 @@ export const registerUser = expressAsyncHandler(async (req, res) => {
     user,
   });
 });
+
+// <= CHECK USERNAME AVAILABILITY =>
+export const checkUsernameAvailability = expressAsyncHandler(
+  async (req, res) => {
+    // GETTING USERNAME FROM REQUEST QUERY
+    const username = req.query.username;
+    // IF USERNAME NOT PROVIDED
+    if (!username) {
+      return res
+        .status(400)
+        .json({ message: "Username is Required!", success: false });
+    }
+    // CHECKING IF THE USERNAME ALREADY EXISTS
+    const usernameExists = await User.findOne({ username: username.trim() })
+      .lean()
+      .exec();
+    // RETURNING RESPONSE
+    return res.status(200).json({ success: true, available: !usernameExists });
+  }
+);
 
 // <= USER LOGIN =>
 export const userLogin = expressAsyncHandler(async (req, res) => {
