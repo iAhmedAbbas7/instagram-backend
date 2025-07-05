@@ -446,20 +446,39 @@ export const getPostLikes = expressAsyncHandler(async (req, res) => {
     return res.status(404).json({ message: "User Not Found!", success: false });
   }
   // FINDING THE POST THROUGH POST ID
-  const foundPost = await Post.findById(postId).populate({
-    path: "likes",
-    select: "username fullName profilePhoto followers following posts",
-  });
+  const foundPost = await Post.findById(postId).exec();
   // IF POST NOT FOUND
   if (!foundPost) {
     return res.status(404).json({ message: "Post Not Found!", success: false });
   }
-  // IF POST HAS NO LIKES
-  if (!foundPost.likes || foundPost.likes === 0) {
-    return res.status(404).json({ message: "No Likes!", success: false });
-  }
+  // SETTING POST LIKES LENGTH
+  const postLikesLength = foundPost.likes.length;
+  // SETTING POST LIKES ARRAY
+  const postLikesArray = foundPost.likes;
+  // SETTING DEFAULT LIMIT NUMBER FOR FETCHING LIKES
+  const DEFAULT_LIMIT = 10;
+  // GETTING LAST INDEX FROM CLIENT SIDE
+  const lastIndex = parseInt(req.query.lastIndex, 10);
+  // COMPUTING START SLICE BOUNDARIES
+  const startIndex = isNaN(lastIndex) ? 0 : lastIndex;
+  // COMPUTING END SLICE BOUNDARIES
+  const endIndex = Math.min(startIndex + DEFAULT_LIMIT, postLikesLength);
+  // SLICING THE LIKED IDS
+  const slicedIds = postLikesArray.slice(startIndex, endIndex);
+  // FETCHING THE SLICED USERS FROM USER MODEL
+  let likesPage = await User.find({ _id: { $in: slicedIds } })
+    .select("username fullName profilePhoto followers following posts")
+    .lean();
+  // PRESERVING THE ORIGINAL ORDER OF THE LIKE USERS
+  likesPage = slicedIds.map((id) =>
+    likesPage.find((u) => u._id.toString() === id.toString())
+  );
   // RETURNING RESPONSE
-  return res.status(200).json({ success: true, likes: foundPost.likes });
+  return res.status(200).json({
+    success: true,
+    likes: likesPage,
+    nextIndex: endIndex < postLikesLength ? endIndex : null,
+  });
 });
 
 // <= EDIT POST =>
