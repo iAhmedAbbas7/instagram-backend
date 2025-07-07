@@ -30,7 +30,7 @@ export const addNewPost = expressAsyncHandler(async (req, res) => {
   // OPTIMIZED IMAGE BUFFER FOR STORAGE
   const optimizedImageBuffer = await sharp(postImage.buffer)
     .resize({ width: 800, height: 800, fit: "inside" })
-    .toFormat("jpeg", { quality: 80 })
+    .toFormat("jpeg", { quality: 100 })
     .toBuffer();
   // GETTING THE DATA URI OF THE FILE FROM HANDLER
   const fileURI = `data:image/jpeg;base64,${optimizedImageBuffer.toString(
