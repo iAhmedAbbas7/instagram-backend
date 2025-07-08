@@ -12,7 +12,7 @@ export const addNewPost = expressAsyncHandler(async (req, res) => {
   // GETTING THE CURRENT LOGGED IN USER ID
   const userId = req.id;
   // GETTING THE POST CAPTION FROM REQUEST BODY
-  const { caption } = req.body;
+  const { caption, location } = req.body;
   // GETTING THE POST IMAGE FROM REQUEST FILE
   const postImage = req.file;
   // FINDING THE USER IN THE USER MODEL THROUGH USER ID
@@ -50,6 +50,7 @@ export const addNewPost = expressAsyncHandler(async (req, res) => {
   // CREATING NEW POST
   const post = await Post.create({
     caption,
+    location: location || "",
     image: imageSecureURL,
     imagePublicId: imagePublicId,
     author: userId,

@@ -5,6 +5,7 @@ import mongoose from "mongoose";
 const postSchema = new mongoose.Schema(
   {
     caption: { type: String, default: "" },
+    location: { type: String, default: "" },
     image: { type: String, required: true },
     imagePublicId: { type: String, default: "" },
     author: {
