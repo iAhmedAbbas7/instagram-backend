@@ -122,3 +122,59 @@ export const getAllMessages = expressAsyncHandler(async (req, res) => {
     .status(200)
     .json({ success: true, messages: conversation?.messages });
 });
+
+// <= GET USER CONVERSATIONS =>
+export const getUserConversations = expressAsyncHandler(async (req, res) => {
+  // GETTING CURRENT LOGGED IN USER ID
+  const userId = req.id;
+  // GETTING PAGE NUMBER AND CURSOR FROM REQUEST QUERY
+  const { limit, cursor } = req.query;
+  // SETTING LIMIT NUMBER
+  const limitNumber = Math.min(50, parseInt(limit) || 10);
+  // BUILDING OUR BASE FILTER
+  const filter = { participants: userId };
+  // SETTING FILTER BASED ON CURSOR PROVIDED
+  if (cursor) filter.updatedAt = { $lt: new Date(cursor) };
+  // FETCHING THE SLICED CONVERSATIONS & TOTAL NUMBER FOR THE USER
+  const [conversations, totalConversations] = await Promise.all([
+    // FINDING THE CONVERSATIONS
+    Conversation.find(filter)
+      .sort({ updatedAt: -1 })
+      .limit(limitNumber)
+      // POPULATING THE PARTICIPANTS INFO
+      .populate({ path: "participants", select: "-password -__v" })
+      // POPULATING THE LAST MESSAGE IN THE CONVERSATION
+      .populate({
+        path: "messages",
+        options: { sort: { createdAt: -1 }, limit: 1 },
+        populate: {
+          path: "senderId",
+          select: "-password -__v",
+        },
+      }),
+    // COUNTING TOTAL CONVERSATIONS
+    Conversation.countDocuments({ participants: userId }),
+  ]);
+  // COMPUTING THE NEXT CURSOR OR NEXT API CALL
+  const nextCursor =
+    conversations.length === limitNumber
+      ? conversations[conversations.length - 1].updatedAt().toISOString()
+      : null;
+  // IF NO ACTIVE CONVERSATIONS
+  if (conversations.length === 0) {
+    return res.status(200).json({
+      success: true,
+      message: "No Active Conversations Found!",
+      conversations: [],
+      totalConversations,
+      nextCursor: null,
+    });
+  }
+  // RETURNING RESPONSE
+  return res.status(200).json({
+    success: true,
+    nextCursor,
+    conversations,
+    totalConversations,
+  });
+});
