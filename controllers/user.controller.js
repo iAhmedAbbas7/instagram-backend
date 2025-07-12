@@ -248,6 +248,58 @@ export const searchUsers = expressAsyncHandler(async (req, res) => {
   return res.status(200).json({ success: true, users: results });
 });
 
+// <= SEARCH USERS INFINITE =>
+export const searchUsersInfinite = expressAsyncHandler(async (req, res) => {
+  // GETTING CURRENT LOGGED IN USER ID
+  const userId = req.id;
+  // GETTING QUERY PARAMS FROM REQUEST QUERY
+  const query = (req.query.q || "").trim();
+  // GETTING PAGE NUMBER AND LIMIT NUMBER FORM REQUEST QUERY
+  const { page, limit } = req.query;
+  // SETTING PAGE NUMBER FOR SEARCH QUERY
+  const pageNumber = Math.max(1, parseInt(page) || 1);
+  // SETTING LIMIT NUMBER FOR SEARCH QUERY
+  const limitNumber = Math.min(50, parseInt(limit) || 10);
+  // SETTING SKIP NUMBER FOR SEARCH QUERY
+  const skipNumber = (pageNumber - 1) * limitNumber;
+  // IF SEARCH QUERY IS NOT PROVIDED
+  if (!query) {
+    return res
+      .status(400)
+      .json({ message: "Search Query is Required!", success: false });
+  }
+  // CREATING A REGEXP FOR SEARCH QUERY
+  const regex = new RegExp(query, "i");
+  // BUILDING THE BASE FILTER OBJECT FOR SEARCH
+  const baseFilter = {
+    $or: [{ username: { $regex: regex } }, { fullName: { $regex: regex } }],
+    // EXCLUDING THE CURRENT USER FROM THE RESULT
+    _id: { $ne: new mongoose.Types.ObjectId(userId) },
+  };
+  // COUNTING THE TOTAL NUMBER OF MATCHING USERS
+  const totalResults = await User.countDocuments(baseFilter);
+  // FETCHING THE PAGE OF RESULTS
+  const users = await User.find(baseFilter)
+    .select("-password -__v")
+    .sort({ username: 1 })
+    .skip(skipNumber)
+    .limit(limitNumber)
+    .lean();
+  // COMPUTING IF THERE ARE MORE TO FETCH ON THE NEXT CALL
+  const hasMore = skipNumber + users.length < totalResults;
+  // RETURNING RESPONSE
+  return res.status(200).json({
+    success: true,
+    users,
+    pagination: {
+      pageNumber,
+      limitNumber,
+      totalResults,
+      hasMore,
+    },
+  });
+});
+
 // <= GETTING USER PROFILE =>
 export const getUserProfile = expressAsyncHandler(async (req, res) => {
   // GETTING USER ID FROM THE REQUEST PARAMS

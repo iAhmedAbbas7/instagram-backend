@@ -11,6 +11,7 @@ import {
   getUserProfile,
   registerUser,
   searchUsers,
+  searchUsersInfinite,
   userLogin,
   userLogout,
 } from "../controllers/user.controller.js";
@@ -27,6 +28,7 @@ router.get("/checkUsername", checkUsernameAvailability);
 router.get("/:id/profile", isAuthenticated, getUserProfile);
 router.delete("/deleteAvatar", isAuthenticated, deleteAvatar);
 router.get("/suggestedUsers", isAuthenticated, getSuggestedUsers);
+router.get("/searchInfiniteUsers", isAuthenticated, searchUsersInfinite);
 router.get("/followOrUnfollow/:id", isAuthenticated, followOrUnfollowUser);
 router.post("/profile/edit", isAuthenticated, singleUpload, editUserProfile);
 
