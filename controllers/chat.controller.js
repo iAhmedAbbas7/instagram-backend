@@ -1,9 +1,9 @@
 // <= IMPORTS =>
+import mongoose from "mongoose";
 import { Message } from "../models/message.model.js";
 import expressAsyncHandler from "express-async-handler";
 import { Conversation } from "../models/conversation.model.js";
 import { getReceiverSocketId, io } from "../services/socket.js";
-import mongoose from "mongoose";
 
 // <= SEND MESSAGE =>
 export const sendMessage = expressAsyncHandler(async (req, res) => {
@@ -50,15 +50,26 @@ export const sendMessage = expressAsyncHandler(async (req, res) => {
         select: "username fullName profilePhoto followers following posts",
       })
       .exec();
+    //  POPULATING THE NEW CONVERSATION
+    const populatedConversation = await Conversation.findById(
+      newConversation._id
+    )
+      .populate({ path: "participants", select: "-password -__v" })
+      .lean();
     // GETTING RECEIVER SOCKET ID
     const receiverSocketId = getReceiverSocketId(receiverId);
     // IF RECEIVER SOCKET ID EXISTS
     if (receiverSocketId) {
       // EMITTING THE NEW MESSAGE EVENT TO THE RECEIVER
       io.to(receiverSocketId).emit("newMessage", populatedMessage);
+      io.to(receiverSocketId).emit("newConversation");
     }
     // RETURNING RESPONSE
-    return res.status(201).json({ success: true, populatedMessage });
+    return res.status(201).json({
+      success: true,
+      populatedMessage,
+      conversation: populatedConversation,
+    });
   } else {
     // CREATING THE MESSAGE
     const newMessage = await Message.create({
@@ -81,15 +92,26 @@ export const sendMessage = expressAsyncHandler(async (req, res) => {
         select: "-password -__v",
       })
       .exec();
+    //  POPULATING THE ALREADY CREATED CONVERSATION
+    const populatedConversation = await Conversation.findById(
+      haveConversation._id
+    )
+      .populate({ path: "participants", select: "-password -__v" })
+      .lean();
     // GETTING RECEIVER SOCKET ID
     const receiverSocketId = getReceiverSocketId(receiverId);
     // IF RECEIVER SOCKET ID EXISTS
     if (receiverSocketId) {
       // EMITTING THE NEW MESSAGE EVENT TO THE RECEIVER
       io.to(receiverSocketId).emit("newMessage", populatedMessage);
+      io.to(receiverSocketId).emit("newConversation");
     }
     // RETURNING RESPONSE
-    return res.status(201).json({ success: true, populatedMessage });
+    return res.status(201).json({
+      success: true,
+      populatedMessage,
+      conversation: populatedConversation,
+    });
   }
 });
 
@@ -153,7 +175,6 @@ export const getConversationMessages = expressAsyncHandler(async (req, res) => {
           select: "-password -__v",
         },
       ],
-      options: { sort: { createdAt: -1 } },
     })
     .lean();
   // IF CONVERSATION NOT FOUND
@@ -166,50 +187,6 @@ export const getConversationMessages = expressAsyncHandler(async (req, res) => {
   return res
     .status(200)
     .json({ success: true, messages: conversation?.messages });
-});
-
-// <= CREATE CONVERSATION =>
-export const createConversation = expressAsyncHandler(async (req, res) => {
-  // GETTING CURRENT LOGGED IN USER ID AS CREATOR ID
-  const creatorId = req.id;
-  // GETTING CONVERSATION PARTICIPANTS FROM REQUEST BODY
-  let { participants } = req.body;
-  // ENSURING THE CONVERSATION CREATOR IS IN THE LIST
-  participants = Array.from(new Set([creatorId, ...participants]));
-  // IF THERE IS ONLY SINGLE PARTICIPANT
-  if (participants.length < 2) {
-    return res.status(400).json({
-      message: "Need At Least 2 Participants to create a Chat!",
-      success: false,
-    });
-  }
-  // FOR ONE-TO-ONE CONVERSATION CHECKING FOR EXISTING CONVERSATION
-  if (participants.length === 2) {
-    // CHECKING FOR EXISTING CONVERSATION
-    const existingConversation = await Conversation.findOne({
-      participants: { $all: participants, $size: 2 },
-    })
-      .populate({ path: "participants", select: "-password -__v" })
-      .lean();
-    // IF CONVERSATION EXISTS
-    if (existingConversation) {
-      return res
-        .status(200)
-        .json({ success: true, conversation: existingConversation });
-    }
-  }
-  // OTHERWISE CREATING A NEW CONVERSATION
-  const newConversation = await Conversation.create({
-    participants,
-    messages: [],
-  });
-  // POPULATING THE NEW CONVERSATION
-  await newConversation.populate({
-    path: "participants",
-    select: "-password -__v",
-  });
-  // RETURNING RESPONSE
-  return res.status(200).json({ success: true, conversation: newConversation });
 });
 
 // <= GET USER CONVERSATIONS =>
