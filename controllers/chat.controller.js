@@ -3,6 +3,7 @@ import { Message } from "../models/message.model.js";
 import expressAsyncHandler from "express-async-handler";
 import { Conversation } from "../models/conversation.model.js";
 import { getReceiverSocketId, io } from "../services/socket.js";
+import mongoose from "mongoose";
 
 // <= SEND MESSAGE =>
 export const sendMessage = expressAsyncHandler(async (req, res) => {
@@ -121,6 +122,94 @@ export const getAllMessages = expressAsyncHandler(async (req, res) => {
   return res
     .status(200)
     .json({ success: true, messages: conversation?.messages });
+});
+
+// <= GET CONVERSATION MESSAGES =>
+export const getConversationMessages = expressAsyncHandler(async (req, res) => {
+  // GETTING CURRENT LOGGED IN USER ID
+  const userId = req.id;
+  // GETTING CONVERSATION ID FROM REQUEST PARAMS
+  const conversationId = req.params.id;
+  // CHECKING THE VALIDITY OF THE CONVERSATION ID
+  if (!mongoose.isValidObjectId(conversationId)) {
+    return res
+      .status(400)
+      .json({ message: "Invalid Conversation ID Found!", success: false });
+  }
+  // FINDING THE CONVERSATION BY ENSURING THE LOGGED IN USER IS A PARTICIPANT
+  const conversation = await Conversation.findOne({
+    _id: conversationId,
+    participants: userId,
+  })
+    .populate({
+      path: "messages",
+      populate: [
+        {
+          path: "senderId",
+          select: "-password -__v",
+        },
+        {
+          path: "receiverId",
+          select: "-password -__v",
+        },
+      ],
+      options: { sort: { createdAt: -1 } },
+    })
+    .lean();
+  // IF CONVERSATION NOT FOUND
+  if (!conversation) {
+    return res
+      .status(400)
+      .json({ message: "Conversation Not Found!", success: false });
+  }
+  // RETURNING RESPONSE
+  return res
+    .status(200)
+    .json({ success: true, messages: conversation?.messages });
+});
+
+// <= CREATE CONVERSATION =>
+export const createConversation = expressAsyncHandler(async (req, res) => {
+  // GETTING CURRENT LOGGED IN USER ID AS CREATOR ID
+  const creatorId = req.id;
+  // GETTING CONVERSATION PARTICIPANTS FROM REQUEST BODY
+  let { participants } = req.body;
+  // ENSURING THE CONVERSATION CREATOR IS IN THE LIST
+  participants = Array.from(new Set([creatorId, ...participants]));
+  // IF THERE IS ONLY SINGLE PARTICIPANT
+  if (participants.length < 2) {
+    return res.status(400).json({
+      message: "Need At Least 2 Participants to create a Chat!",
+      success: false,
+    });
+  }
+  // FOR ONE-TO-ONE CONVERSATION CHECKING FOR EXISTING CONVERSATION
+  if (participants.length === 2) {
+    // CHECKING FOR EXISTING CONVERSATION
+    const existingConversation = await Conversation.findOne({
+      participants: { $all: participants, $size: 2 },
+    })
+      .populate({ path: "participants", select: "-password -__v" })
+      .lean();
+    // IF CONVERSATION EXISTS
+    if (existingConversation) {
+      return res
+        .status(200)
+        .json({ success: true, conversation: existingConversation });
+    }
+  }
+  // OTHERWISE CREATING A NEW CONVERSATION
+  const newConversation = await Conversation.create({
+    participants,
+    messages: [],
+  });
+  // POPULATING THE NEW CONVERSATION
+  await newConversation.populate({
+    path: "participants",
+    select: "-password -__v",
+  });
+  // RETURNING RESPONSE
+  return res.status(200).json({ success: true, conversation: newConversation });
 });
 
 // <= GET USER CONVERSATIONS =>
