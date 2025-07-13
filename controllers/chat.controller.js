@@ -121,29 +121,42 @@ export const getAllMessages = expressAsyncHandler(async (req, res) => {
   const userId = req.id;
   // GETTING THE OTHER PARTICIPANT ID FROM REQUEST PARAMS
   const receiverId = req.params.id;
+  // GETTING LIMIT NUMBER AND CURSOR FROM REQUEST QUERY
+  const { limit = 15, cursor } = req.query;
+  // SETTING LIMIT NUMBER
+  const limitNumber = Math.min(50, parseInt(limit));
   // CHECKING IF THEY HAVE AN ACTIVE CONVERSATION
   const conversation = await Conversation.findOne({
     participants: { $all: [userId, receiverId] },
-  }).populate({
-    path: "messages",
-    populate: [
-      {
-        path: "senderId",
-        select: "-password -__v",
-      },
-      {
-        path: "receiverId",
-        select: "-password -__v",
-      },
-    ],
-  });
+  }).lean();
   // IF THEY DO NOT HAVE AN ACTIVE CONVERSATION THEN SENDING EMPTY MESSAGES ARRAY
-  if (!conversation)
-    return res.status(200).json({ success: true, messages: [] });
-  // IF THEY HAVE AN ACTIVE CONVERSATION THEN GETTING ALL THE MESSAGES
+  if (!conversation && !cursor)
+    return res
+      .status(200)
+      .json({ success: true, messages: [], pagination: { nextCursor: null } });
+  // INITIATING FILTER FOR FETCHING MESSAGES
+  const filter = {};
+  // IF CONVERSATION EXISTS
+  if (conversation) filter._id = { $in: conversation.messages };
+  // IF CURSOR IS PROVIDED
+  if (cursor) filter.createdAt = { $lt: new Date(cursor) };
+  // FETCHING MESSAGES NEWEST TO OLDEST
+  const page = await Message.find(filter)
+    .sort({ createdAt: -1 })
+    .limit(limitNumber)
+    .populate({ path: "senderId", select: "-password -__v" })
+    .populate({ path: "receiverId", select: "-password -__v" })
+    .lean();
+  // SETTING HAS MORE FLAG
+  const hasMore = page.length === limitNumber;
+  // SETTING NEXT CURSOR BASED ON HAS MORE FLAG
+  const nextCursor = hasMore
+    ? page[page.length - 1].createdAt.toISOString()
+    : null;
+  // RETURNING RESPONSE
   return res
     .status(200)
-    .json({ success: true, messages: conversation?.messages });
+    .json({ success: true, messages: page, pagination: { nextCursor } });
 });
 
 // <= GET CONVERSATION MESSAGES =>
@@ -152,6 +165,10 @@ export const getConversationMessages = expressAsyncHandler(async (req, res) => {
   const userId = req.id;
   // GETTING CONVERSATION ID FROM REQUEST PARAMS
   const conversationId = req.params.id;
+  // GETTING LIMIT NUMBER AND CURSOR FROM REQUEST QUERY
+  const { limit = 15, cursor } = req.query;
+  // SETTING LIMIT NUMBER
+  const limitNumber = Math.min(50, parseInt(limit));
   // CHECKING THE VALIDITY OF THE CONVERSATION ID
   if (!mongoose.isValidObjectId(conversationId)) {
     return res
@@ -162,31 +179,36 @@ export const getConversationMessages = expressAsyncHandler(async (req, res) => {
   const conversation = await Conversation.findOne({
     _id: conversationId,
     participants: userId,
-  })
-    .populate({
-      path: "messages",
-      populate: [
-        {
-          path: "senderId",
-          select: "-password -__v",
-        },
-        {
-          path: "receiverId",
-          select: "-password -__v",
-        },
-      ],
-    })
-    .lean();
+  }).lean();
   // IF CONVERSATION NOT FOUND
   if (!conversation) {
     return res
       .status(400)
       .json({ message: "Conversation Not Found!", success: false });
   }
+  // INITIATING FILTER FOR FETCHING MESSAGES
+  const filter = {};
+  // IF CONVERSATION EXISTS
+  if (conversation) filter._id = { $in: conversation.messages };
+  // IF CURSOR IS PROVIDED
+  if (cursor) filter.createdAt = { $lt: new Date(cursor) };
+  // FETCHING MESSAGES NEWEST TO OLDEST
+  const page = await Message.find(filter)
+    .sort({ createdAt: -1 })
+    .limit(limitNumber)
+    .populate({ path: "senderId", select: "-password -__v" })
+    .populate({ path: "receiverId", select: "-password -__v" })
+    .lean();
+  // SETTING HAS MORE FLAG
+  const hasMore = page.length === limitNumber;
+  // SETTING NEXT CURSOR BASED ON HAS MORE FLAG
+  const nextCursor = hasMore
+    ? page[page.length - 1].createdAt.toISOString()
+    : null;
   // RETURNING RESPONSE
   return res
     .status(200)
-    .json({ success: true, messages: conversation?.messages });
+    .json({ success: true, messages: page, pagination: { nextCursor } });
 });
 
 // <= GET USER CONVERSATIONS =>
