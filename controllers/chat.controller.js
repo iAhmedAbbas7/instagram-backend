@@ -54,6 +54,7 @@ export const sendMessage = expressAsyncHandler(async (req, res) => {
     const populatedConversation = await Conversation.findById(
       newConversation._id
     )
+      .select("-messages")
       .populate({ path: "participants", select: "-password -__v" })
       .lean();
     // GETTING RECEIVER SOCKET ID
@@ -96,6 +97,7 @@ export const sendMessage = expressAsyncHandler(async (req, res) => {
     const populatedConversation = await Conversation.findById(
       haveConversation._id
     )
+      .select("-messages")
       .populate({ path: "participants", select: "-password -__v" })
       .lean();
     // GETTING RECEIVER SOCKET ID
