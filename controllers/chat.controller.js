@@ -1,5 +1,7 @@
 // <= IMPORTS =>
 import mongoose from "mongoose";
+import getDataURI from "../utils/dataURI.js";
+import cloudinary from "../utils/cloudinary.js";
 import { Message } from "../models/message.model.js";
 import expressAsyncHandler from "express-async-handler";
 import { Conversation } from "../models/conversation.model.js";
@@ -34,6 +36,7 @@ export const sendMessage = expressAsyncHandler(async (req, res) => {
       senderId,
       receiverId,
       message,
+      conversationId: null,
     });
     // PUSHING THE MESSAGE IN THE NEW CONVERSATION
     newConversation.messages.push(newMessage._id);
@@ -63,6 +66,7 @@ export const sendMessage = expressAsyncHandler(async (req, res) => {
     if (receiverSocketId) {
       // EMITTING THE NEW MESSAGE EVENT TO THE RECEIVER
       io.to(receiverSocketId).emit("newMessage", populatedMessage);
+      // EMITTING NEW CONVERSATION EVENT TO THE RECEIVER
       io.to(receiverSocketId).emit("newConversation");
     }
     // RETURNING RESPONSE
@@ -77,6 +81,7 @@ export const sendMessage = expressAsyncHandler(async (req, res) => {
       senderId,
       receiverId,
       message,
+      conversationId: null,
     });
     // PUSHING THE MESSAGE IN THE EXISTING CONVERSATION
     haveConversation.messages.push(newMessage._id);
@@ -106,7 +111,6 @@ export const sendMessage = expressAsyncHandler(async (req, res) => {
     if (receiverSocketId) {
       // EMITTING THE NEW MESSAGE EVENT TO THE RECEIVER
       io.to(receiverSocketId).emit("newMessage", populatedMessage);
-      io.to(receiverSocketId).emit("newConversation");
     }
     // RETURNING RESPONSE
     return res.status(201).json({
@@ -115,6 +119,74 @@ export const sendMessage = expressAsyncHandler(async (req, res) => {
       conversation: populatedConversation,
     });
   }
+});
+
+// SEND GROUP MESSAGE =>
+export const sendGroupMessage = expressAsyncHandler(async (req, res) => {
+  // GETTING THE CURRENT LOGGED IN USER ID AS SENDER ID
+  const senderId = req.id;
+  // GETTING THE CONVERSATION ID FROM REQUEST PARAMS
+  const conversationId = req.params.id;
+  // GETTING THE MESSAGE FROM REQUEST BODY
+  const { message } = req.body;
+  // VALIDATING THE MESSAGE TEXT
+  if (!message || !message.trim()) {
+    return res
+      .status(400)
+      .json({ message: "Message cannot be Empty!", success: false });
+  }
+  // VALIDATING THE CONVERSATION ID
+  if (!mongoose.isValidObjectId(conversationId)) {
+    return res
+      .status(400)
+      .json({ message: "Invalid Conversation ID!", success: false });
+  }
+  // FINDING THE CONVERSATION IN THE CONVERSATION MODEL
+  const conversation = await Conversation.findOne({
+    _id: conversationId,
+    participants: senderId,
+  });
+  // IF CONVERSATION NOT FOUND
+  if (!conversation) {
+    return res
+      .status(400)
+      .json({ message: "Conversation Not Found!", success: false });
+  }
+  // CREATING THE NEW MESSAGE
+  const newMessage = await Message.create({
+    senderId,
+    receiverId: null,
+    conversationId,
+    message,
+  });
+  // PUSHING THE MESSAGE IN THE CONVERSATION MESSAGES
+  conversation.messages.push(newMessage._id);
+  // SAVING THE CONVERSATION
+  await conversation.save();
+  // POPULATING THE NEW MESSAGE
+  const populatedMessage = await Message.findById(newMessage._id)
+    .populate({
+      path: "senderId",
+      select: "-password -__v",
+    })
+    .populate({
+      path: "receiverId",
+      select: "-password -__v",
+    })
+    .exec();
+  // BROADCASTING TO ALL GROUP PARTICIPANTS THE NEW MESSAGE
+  for (const p of conversation.participants.map((p) => p.toString())) {
+    // SKIPPING THE MESSAGE SENDER
+    if (p === senderId) continue;
+    // GETTING THE SOCKET ID'S OF PARTICIPANTS
+    const socketId = getReceiverSocketId(p);
+    // IF SOCKET ID EXISTS
+    if (socketId) {
+      io.to(socketId).emit("newMessage", populatedMessage);
+    }
+  }
+  // RETURNING RESPONSE
+  return res.status(200).json({ success: true, populatedMessage });
 });
 
 // <= GET ALL MESSAGES =>
@@ -231,6 +303,7 @@ export const getUserConversations = expressAsyncHandler(async (req, res) => {
     Conversation.find(filter)
       .sort({ updatedAt: -1 })
       .limit(limitNumber)
+      .select("-messages")
       // POPULATING THE PARTICIPANTS INFO
       .populate({ path: "participants", select: "-password -__v" })
       // POPULATING THE LAST MESSAGE IN THE CONVERSATION
@@ -267,4 +340,80 @@ export const getUserConversations = expressAsyncHandler(async (req, res) => {
     conversations,
     totalConversations,
   });
+});
+
+// <= CREATE GROUP CONVERSATION =>
+export const createGroupChat = expressAsyncHandler(async (req, res) => {
+  // GETTING THE CURRENT LOGGED IN USER ID AS CREATOR ID
+  const creatorId = req.id;
+  // GETTING GROUP PARTICIPANTS & NAME FROM REQUEST BODY
+  let { participants = [], name } = req.body;
+  // MAKING SURE THE NAME IS NOT EMPTY
+  if (!name.trim()) {
+    return res
+      .status(400)
+      .json({ message: "Name cannot be Empty", success: false });
+  }
+  // CONVERTING THE PARTICIPANTS IN TO AN ARRAY
+  if (typeof participants === "string") {
+    participants = JSON.parse(participants);
+  }
+  // ENSURING PARTICIPANTS INS AN ARRAY
+  if (!Array.isArray(participants)) {
+    return res
+      .status(400)
+      .json({ message: "Participants must be an Array!", success: false });
+  }
+  // INCLUDING THE CREATOR ID IN THE PARTICIPANTS ARRAY
+  const allParticipants = Array.from(new Set([...participants, creatorId]));
+  // MAKING SURE GROUP HAS AT LEAST THREE PARTICIPANTS
+  if (allParticipants.length < 3) {
+    return res.status(400).json({
+      message: "A Group Chat must have at least 3 Participants!",
+      success: false,
+    });
+  }
+  // INITIATING AVATAR & AVATAR PUBLIC ID
+  let avatar = "";
+  let avatarPublicId = "";
+  // IF GROUP AVATAR WAS PROVIDED
+  if (req.file) {
+    // GETTING GROUP AVATAR FROM REQUEST FILE
+    const file = req.file;
+    // GETTING THE DATA URI OF THE FILE FROM HANDLER
+    const fileURI = getDataURI(file);
+    // CLOUDINARY UPLOAD
+    const cloudResponse = await cloudinary.uploader.upload(fileURI.content);
+    // IF CLOUDINARY UPLOAD FAILS
+    if (!cloudResponse) {
+      return res
+        .status(500)
+        .json({ message: "Failed to Upload Group Avatar!", success: false });
+    }
+    // SETTING AVATAR SECURE URL
+    avatar = cloudResponse.secure_url;
+    // SETTING AVATAR PUBLIC ID
+    avatarPublicId = cloudResponse.public_id;
+  }
+  // CREATING GROUP CONVERSATION
+  const groupChat = await Conversation.create({
+    participants: allParticipants,
+    messages: [],
+    type: "GROUP",
+    name,
+    avatar,
+    avatarPublicId,
+  });
+  // POPULATING THE GROUP CHAT
+  const populatedGroupChat = await Conversation.findById(groupChat._id)
+    .populate({
+      path: "participants",
+      select: "-password -__v",
+    })
+    .select("-messages")
+    .lean();
+  // RETURNING RESPONSE
+  return res
+    .status(200)
+    .json({ success: true, conversation: populatedGroupChat });
 });

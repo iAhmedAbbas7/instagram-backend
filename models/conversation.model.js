@@ -10,6 +10,14 @@ const conversationSchema = new mongoose.Schema(
     messages: [
       { type: mongoose.Schema.Types.ObjectId, ref: "Message", required: true },
     ],
+    type: {
+      type: String,
+      enum: ["ONE-TO-ONE", "GROUP"],
+      default: "ONE-TO-ONE",
+    },
+    name: { type: String, default: "" },
+    avatar: { type: String, default: "" },
+    avatarPublicId: { type: String, default: "" },
   },
   { timestamps: true }
 );

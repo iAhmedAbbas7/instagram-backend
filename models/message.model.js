@@ -12,7 +12,16 @@ const messageSchema = new mongoose.Schema(
     receiverId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
-      required: true,
+      required: function () {
+        return !this.conversationId;
+      },
+    },
+    conversationId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Conversation",
+      required: function () {
+        return !this.receiverId;
+      },
     },
     message: { type: String, required: true },
   },
