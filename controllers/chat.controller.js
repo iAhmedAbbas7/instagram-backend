@@ -305,16 +305,7 @@ export const getUserConversations = expressAsyncHandler(async (req, res) => {
       .limit(limitNumber)
       .select("-messages")
       // POPULATING THE PARTICIPANTS INFO
-      .populate({ path: "participants", select: "-password -__v" })
-      // POPULATING THE LAST MESSAGE IN THE CONVERSATION
-      .populate({
-        path: "messages",
-        options: { sort: { createdAt: -1 }, limit: 1 },
-        populate: {
-          path: "senderId",
-          select: "-password -__v",
-        },
-      }),
+      .populate({ path: "participants", select: "-password -__v" }),
     // COUNTING TOTAL CONVERSATIONS
     Conversation.countDocuments({ participants: userId }),
   ]);
