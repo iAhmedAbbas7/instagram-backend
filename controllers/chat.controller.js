@@ -202,6 +202,7 @@ export const getAllMessages = expressAsyncHandler(async (req, res) => {
   // CHECKING IF THEY HAVE AN ACTIVE CONVERSATION
   const conversation = await Conversation.findOne({
     participants: { $all: [userId, receiverId] },
+    type: "ONE-TO-ONE",
   }).lean();
   // IF THEY DO NOT HAVE AN ACTIVE CONVERSATION THEN SENDING EMPTY MESSAGES ARRAY
   if (!conversation && !cursor)
