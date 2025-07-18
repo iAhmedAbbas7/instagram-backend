@@ -75,12 +75,12 @@ export const registerUser = expressAsyncHandler(async (req, res) => {
     username,
     email,
     password: hashedPassword,
+    gender: "",
   });
   // RETURNING RESPONSE
   return res.status(201).json({
     message: `User ${fullName} Registered Successfully!`,
     success: true,
-    user,
   });
 });
 
