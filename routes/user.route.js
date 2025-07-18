@@ -1,6 +1,7 @@
 // <= IMPORTS =>
 import express from "express";
 import { singleUpload } from "../middleware/multer.js";
+import { authLimiter } from "../middleware/rateLimiter.js";
 import isAuthenticated from "../middleware/isAuthenticated.js";
 import {
   checkUsernameAvailability,
@@ -20,10 +21,10 @@ import {
 const router = express.Router();
 
 // <= ROUTES =>
-router.post("/login", userLogin);
 router.get("/logout", userLogout);
-router.post("/register", registerUser);
+router.post("/login", authLimiter, userLogin);
 router.get("/search", isAuthenticated, searchUsers);
+router.post("/register", authLimiter, registerUser);
 router.get("/checkUsername", checkUsernameAvailability);
 router.get("/:id/profile", isAuthenticated, getUserProfile);
 router.delete("/deleteAvatar", isAuthenticated, deleteAvatar);
