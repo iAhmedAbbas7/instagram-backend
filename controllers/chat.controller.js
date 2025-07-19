@@ -201,9 +201,20 @@ export const getAllMessages = expressAsyncHandler(async (req, res) => {
   const limitNumber = Math.min(50, parseInt(limit));
   // CHECKING IF THEY HAVE AN ACTIVE CONVERSATION
   const conversation = await Conversation.findOne({
-    participants: { $all: [userId, receiverId] },
     type: "ONE-TO-ONE",
+    participants: {
+      $all: [
+        { $elemMatch: { userId, deletedAt: null } },
+        { $elemMatch: { userId: receiverId } },
+      ],
+    },
   }).lean();
+  // PULLING OUT MY DELETION TIMESTAMP
+  const myDeletionTimestamp = conversation?.participants.find(
+    (p) => p.userId.toString() === userId
+  );
+  // CALCULATING THE DELETION TIME IF ANY
+  const deletionTime = myDeletionTimestamp?.deletedAt ?? new Date(0);
   // IF THEY DO NOT HAVE AN ACTIVE CONVERSATION THEN SENDING EMPTY MESSAGES ARRAY
   if (!conversation && !cursor)
     return res
@@ -212,9 +223,17 @@ export const getAllMessages = expressAsyncHandler(async (req, res) => {
   // INITIATING FILTER FOR FETCHING MESSAGES
   const filter = {};
   // IF CONVERSATION EXISTS
-  if (conversation) filter._id = { $in: conversation.messages };
+  if (conversation) {
+    (filter._id = { $in: conversation.messages }),
+      (filter.createdAt = { $gt: deletionTime });
+  }
   // IF CURSOR IS PROVIDED
-  if (cursor) filter.createdAt = { $lt: new Date(cursor) };
+  if (cursor) {
+    filter.createdAt = {
+      ...filter.createdAt,
+      $lt: new Date(cursor),
+    };
+  }
   // FETCHING MESSAGES NEWEST TO OLDEST
   const page = await Message.find(filter)
     .sort({ createdAt: -1 })
@@ -253,7 +272,7 @@ export const getConversationMessages = expressAsyncHandler(async (req, res) => {
   // FINDING THE CONVERSATION BY ENSURING THE LOGGED IN USER IS A PARTICIPANT
   const conversation = await Conversation.findOne({
     _id: conversationId,
-    participants: userId,
+    participants: { $elemMatch: { userId, deletedAt: null } },
   }).lean();
   // IF CONVERSATION NOT FOUND
   if (!conversation) {
@@ -261,12 +280,21 @@ export const getConversationMessages = expressAsyncHandler(async (req, res) => {
       .status(400)
       .json({ message: "Conversation Not Found!", success: false });
   }
+  // PULLING OUT MY DELETION TIMESTAMP
+  const myDeletionTimestamp = conversation?.participants.find(
+    (p) => p.userId.toString() === userId
+  );
+  // CALCULATING THE DELETION TIME IF ANY
+  const deletionTime = myDeletionTimestamp?.deletedAt ?? new Date(0);
   // INITIATING FILTER FOR FETCHING MESSAGES
-  const filter = {};
-  // IF CONVERSATION EXISTS
-  if (conversation) filter._id = { $in: conversation.messages };
+  const filter = {
+    _id: { $in: conversation.messages },
+    createdAt: { $gt: deletionTime },
+  };
   // IF CURSOR IS PROVIDED
-  if (cursor) filter.createdAt = { $lt: new Date(cursor) };
+  if (cursor) {
+    filter.createdAt.$lt = new Date(cursor);
+  }
   // FETCHING MESSAGES NEWEST TO OLDEST
   const page = await Message.find(filter)
     .sort({ createdAt: -1 })
@@ -295,7 +323,7 @@ export const getUserConversations = expressAsyncHandler(async (req, res) => {
   // SETTING LIMIT NUMBER
   const limitNumber = Math.min(50, parseInt(limit) || 10);
   // BUILDING OUR BASE FILTER
-  const filter = { participants: userId };
+  const filter = { participants: { $elemMatch: { userId, deletedAt: null } } };
   // SETTING FILTER BASED ON CURSOR PROVIDED
   if (cursor) filter.updatedAt = { $lt: new Date(cursor) };
   // FETCHING THE SLICED CONVERSATIONS & TOTAL NUMBER FOR THE USER
@@ -306,9 +334,9 @@ export const getUserConversations = expressAsyncHandler(async (req, res) => {
       .limit(limitNumber)
       .select("-messages")
       // POPULATING THE PARTICIPANTS INFO
-      .populate({ path: "participants", select: "-password -__v" }),
+      .populate({ path: "participants.userId", select: "-password -__v" }),
     // COUNTING TOTAL CONVERSATIONS
-    Conversation.countDocuments({ participants: userId }),
+    Conversation.countDocuments(filter),
   ]);
   // COMPUTING THE NEXT CURSOR OR NEXT API CALL
   const nextCursor =

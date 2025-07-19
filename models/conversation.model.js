@@ -1,12 +1,25 @@
 // <= IMPORTS =>
 import mongoose from "mongoose";
 
+// <= PARTICIPANT SCHEMA =>
+const participantSchema = new mongoose.Schema(
+  {
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    },
+    lastRead: { type: Date, default: null },
+    deletedAt: { type: Date, default: null },
+    mutedUntil: { type: Date, default: null },
+  },
+  { _id: false }
+);
+
 // <= CONVERSATION SCHEMA =>
 const conversationSchema = new mongoose.Schema(
   {
-    participants: [
-      { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
-    ],
+    participants: [participantSchema],
     messages: [
       { type: mongoose.Schema.Types.ObjectId, ref: "Message", required: true },
     ],
