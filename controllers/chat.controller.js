@@ -23,13 +23,18 @@ export const sendMessage = expressAsyncHandler(async (req, res) => {
   }
   // CHECKING IF THEY ALREADY HAVE AN ACTIVE CONVERSATION
   const haveConversation = await Conversation.findOne({
-    participants: { $all: [senderId, receiverId] },
+    participants: {
+      $all: [
+        { $elemMatch: { userId: senderId } },
+        { $elemMatch: { userId: receiverId } },
+      ],
+    },
   });
   // IF THEY DO NOT HAVE AN ACTIVE CONVERSATION
   if (!haveConversation) {
     // CREATING NEW CONVERSATION BETWEEN THEM
     const newConversation = await Conversation.create({
-      participants: [senderId, receiverId],
+      participants: [{ userId: senderId }, { userId: receiverId }],
     });
     // CREATING THE MESSAGE
     const newMessage = await Message.create({
@@ -58,7 +63,7 @@ export const sendMessage = expressAsyncHandler(async (req, res) => {
       newConversation._id
     )
       .select("-messages")
-      .populate({ path: "participants", select: "-password -__v" })
+      .populate({ path: "participants.userId", select: "-password -__v" })
       .lean();
     // GETTING RECEIVER SOCKET ID
     const receiverSocketId = getReceiverSocketId(receiverId);
@@ -85,6 +90,15 @@ export const sendMessage = expressAsyncHandler(async (req, res) => {
     });
     // PUSHING THE MESSAGE IN THE EXISTING CONVERSATION
     haveConversation.messages.push(newMessage._id);
+    // CLEARING THE DELETED AT SO THE CHAT RE-APPEARS AND BUMP UPDATED AT
+    await Conversation.findByIdAndUpdate(
+      haveConversation._id,
+      {
+        $set: { "participants.$[me].deletedAt": null },
+        $currentDate: { updatedAt: true },
+      },
+      { arrayFilters: [{ "me.userId": senderId }] }
+    );
     // SAVING THE CONVERSATION
     await haveConversation.save();
     // POPULATING THE CREATED MESSAGE
@@ -103,7 +117,7 @@ export const sendMessage = expressAsyncHandler(async (req, res) => {
       haveConversation._id
     )
       .select("-messages")
-      .populate({ path: "participants", select: "-password -__v" })
+      .populate({ path: "participants.userId", select: "-password -__v" })
       .lean();
     // GETTING RECEIVER SOCKET ID
     const receiverSocketId = getReceiverSocketId(receiverId);
@@ -144,7 +158,7 @@ export const sendGroupMessage = expressAsyncHandler(async (req, res) => {
   // FINDING THE CONVERSATION IN THE CONVERSATION MODEL
   const conversation = await Conversation.findOne({
     _id: conversationId,
-    participants: senderId,
+    "participants.userId": senderId,
   });
   // IF CONVERSATION NOT FOUND
   if (!conversation) {
@@ -161,6 +175,15 @@ export const sendGroupMessage = expressAsyncHandler(async (req, res) => {
   });
   // PUSHING THE MESSAGE IN THE CONVERSATION MESSAGES
   conversation.messages.push(newMessage._id);
+  // CLEARING THE DELETED AT SO THE CHAT RE-APPEARS AND BUMP UPDATED AT
+  await Conversation.findByIdAndUpdate(
+    conversationId,
+    {
+      $set: { "participants.$[me].deletedAt": null },
+      $currentDate: { updatedAt: true },
+    },
+    { arrayFilters: [{ "me.userId": senderId }] }
+  );
   // SAVING THE CONVERSATION
   await conversation.save();
   // POPULATING THE NEW MESSAGE
@@ -338,6 +361,24 @@ export const getUserConversations = expressAsyncHandler(async (req, res) => {
     // COUNTING TOTAL CONVERSATIONS
     Conversation.countDocuments(filter),
   ]);
+  // COMPUTING THE LIST OF ALL ACTIVE ONE-TO-ONE CONVERSATIONS LIST
+  const currentConversations = await Conversation.find({
+    participants: { $elemMatch: { userId, deletedAt: null } },
+    type: "ONE-TO-ONE",
+  })
+    .select("participants.userId")
+    .lean();
+  // EXTRACTING THE IDS FO THE CURRENT CONVERSATIONS PARTICIPANTS
+  const chatUsers = currentConversations
+    .map((chat) => {
+      // SETTING OTHER CHAT PARTICIPANT
+      const other = chat.participants.find(
+        (p) => p.userId.toString() !== userId
+      );
+      // RETURNING OTHER PARTICIPANT USER ID
+      return other?.userId.toString();
+    })
+    .filter(Boolean);
   // COMPUTING THE NEXT CURSOR OR NEXT API CALL
   const nextCursor =
     conversations.length === limitNumber
@@ -351,6 +392,7 @@ export const getUserConversations = expressAsyncHandler(async (req, res) => {
       conversations: [],
       totalConversations,
       nextCursor: null,
+      chatUsers,
     });
   }
   // RETURNING RESPONSE
@@ -359,6 +401,7 @@ export const getUserConversations = expressAsyncHandler(async (req, res) => {
     nextCursor,
     conversations,
     totalConversations,
+    chatUsers,
   });
 });
 
@@ -417,7 +460,7 @@ export const createGroupChat = expressAsyncHandler(async (req, res) => {
   }
   // CREATING GROUP CONVERSATION
   const groupChat = await Conversation.create({
-    participants: allParticipants,
+    participants: allParticipants.map((u) => ({ userId: u })),
     messages: [],
     type: "GROUP",
     name,
@@ -427,7 +470,7 @@ export const createGroupChat = expressAsyncHandler(async (req, res) => {
   // POPULATING THE GROUP CHAT
   const populatedGroupChat = await Conversation.findById(groupChat._id)
     .populate({
-      path: "participants",
+      path: "participants.userId",
       select: "-password -__v",
     })
     .select("-messages")
