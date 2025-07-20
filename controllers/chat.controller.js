@@ -1,6 +1,7 @@
 // <= IMPORTS =>
 import mongoose from "mongoose";
 import getDataURI from "../utils/dataURI.js";
+import { User } from "../models/user.model.js";
 import cloudinary from "../utils/cloudinary.js";
 import { Message } from "../models/message.model.js";
 import expressAsyncHandler from "express-async-handler";
@@ -479,4 +480,51 @@ export const createGroupChat = expressAsyncHandler(async (req, res) => {
   return res
     .status(200)
     .json({ success: true, conversation: populatedGroupChat });
+});
+
+// <= DELETE CONVERSATION =>
+export const deleteConversation = expressAsyncHandler(async (req, res) => {
+  // GETTING CURRENT LOGGED IN USER ID
+  const userId = req.id;
+  // GETTING THE CONVERSATION ID FROM REQUEST PARAMS
+  const conversationId = req.params.id;
+  // FINDING THE USER IN THE USER MODEL THROUGH USER ID
+  const foundUser = await User.findById(userId).lean().exec();
+  // IF USER NOT FOUND
+  if (!foundUser) {
+    return res.status(404).json({ message: "User Not Found!", success: false });
+  }
+  // CHECKING THE VALIDITY OF THE CONVERSATION ID
+  if (!mongoose.isValidObjectId(conversationId)) {
+    return res
+      .status(400)
+      .json({ message: "Invalid Conversation ID!", success: false });
+  }
+  // FINDING THE CONVERSATION AND ACTIVATING THE SOFT DELETE FOR THE REQUESTED USER
+  const conversation = await Conversation.updateOne(
+    {
+      _id: conversationId,
+      "participants.userId": userId,
+    },
+    {
+      $set: { "participants.$.deletedAt": new Date() },
+      $currentDate: { updatedAt: true },
+    }
+  );
+  // IF CONVERSATION NOT FOUND
+  if (!conversation) {
+    return res
+      .status(404)
+      .json({ message: "Conversation Not Found!", success: false });
+  }
+  // IF THE CONVERSATION WAS NOT MODIFIED
+  if (conversation.nModified === 0) {
+    return res
+      .status(404)
+      .json({ message: "Conversation Not Found!", success: false });
+  }
+  // RETURNING RESPONSE
+  return res
+    .status(200)
+    .json({ message: "Chat Deleted Successfully!", success: true });
 });

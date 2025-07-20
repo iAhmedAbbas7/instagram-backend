@@ -4,6 +4,7 @@ import { singleUpload } from "../middleware/multer.js";
 import isAuthenticated from "../middleware/isAuthenticated.js";
 import {
   createGroupChat,
+  deleteConversation,
   getAllMessages,
   getConversationMessages,
   getUserConversations,
@@ -23,6 +24,7 @@ router.get(
 router.post("/send/:id", isAuthenticated, sendMessage);
 router.get("/all/:id", isAuthenticated, getAllMessages);
 router.get("/conversations", isAuthenticated, getUserConversations);
+router.delete("/conversation/:id", isAuthenticated, deleteConversation);
 router.post("/conversation/:id/send", isAuthenticated, sendGroupMessage);
 router.post("/groupChat", isAuthenticated, singleUpload, createGroupChat);
 
