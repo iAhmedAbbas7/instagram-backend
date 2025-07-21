@@ -17,7 +17,6 @@ import { logEvents } from "./middleware/logger.js";
 import { getDirName } from "./utils/getDirName.js";
 import { app, server } from "./services/socket.js";
 import messageRoute from "./routes/message.route.js";
-import { globalLimiter } from "./middleware/rateLimiter.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 
 // <= DATABASE CONNECTION =>
@@ -40,9 +39,6 @@ app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 // STATIC MIDDLEWARE
 app.use("/", express.static(path.join(__dirname, "public")));
-
-// <= GLOBAL RATE LIMITER =>
-app.use("/api/v1", globalLimiter);
 
 // <= ROUTES MIDDLEWARE =>
 // ROOT ROUTE

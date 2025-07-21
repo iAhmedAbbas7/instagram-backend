@@ -10,6 +10,7 @@ const participantSchema = new mongoose.Schema(
       required: true,
     },
     lastRead: { type: Date, default: null },
+    deleted: { type: Boolean, default: false },
     deletedAt: { type: Date, default: null },
     mutedUntil: { type: Date, default: null },
   },

@@ -24,6 +24,7 @@ export const sendMessage = expressAsyncHandler(async (req, res) => {
   }
   // CHECKING IF THEY ALREADY HAVE AN ACTIVE CONVERSATION
   const haveConversation = await Conversation.findOne({
+    type: "ONE-TO-ONE",
     participants: {
       $all: [
         { $elemMatch: { userId: senderId } },
@@ -91,17 +92,30 @@ export const sendMessage = expressAsyncHandler(async (req, res) => {
     });
     // PUSHING THE MESSAGE IN THE EXISTING CONVERSATION
     haveConversation.messages.push(newMessage._id);
-    // CLEARING THE DELETED AT SO THE CHAT RE-APPEARS AND BUMP UPDATED AT
-    await Conversation.findByIdAndUpdate(
-      haveConversation._id,
-      {
-        $set: { "participants.$[me].deletedAt": null },
-        $currentDate: { updatedAt: true },
-      },
-      { arrayFilters: [{ "me.userId": senderId }] }
-    );
     // SAVING THE CONVERSATION
     await haveConversation.save();
+    // PULLING OUT CURRENT USER CONVERSATION PARTICIPANT RECORD
+    const myConversationPart = haveConversation?.participants.find(
+      (p) => p.userId.toString() === senderId
+    );
+    // IF THE CURRENT USER HAD SOFT-DELETED THE CHAT
+    if (myConversationPart?.deleted) {
+      // UPDATING THE CONVERSATION SOFT DELETED FLAG
+      await Conversation.updateOne(
+        { _id: haveConversation._id, "participants.userId": senderId },
+        {
+          $set: { "participants.$[me].deleted": false },
+          $currentDate: { updatedAt: true },
+        },
+        { arrayFilters: [{ "me.userId": senderId }] }
+      );
+      // GETTING SENDER SOCKET ID
+      const senderSocketId = getReceiverSocketId(senderId);
+      // NOTIFYING THE SENDER TO REFRESH THEIR CONVERSATIONS LIST
+      if (senderSocketId) {
+        io.to(senderSocketId).emit("chatInitiated");
+      }
+    }
     // POPULATING THE CREATED MESSAGE
     const populatedMessage = await Message.findById(newMessage._id)
       .populate({
@@ -159,7 +173,8 @@ export const sendGroupMessage = expressAsyncHandler(async (req, res) => {
   // FINDING THE CONVERSATION IN THE CONVERSATION MODEL
   const conversation = await Conversation.findOne({
     _id: conversationId,
-    "participants.userId": senderId,
+    type: "GROUP",
+    participants: { $elemMatch: { userId: senderId, deleted: false } },
   });
   // IF CONVERSATION NOT FOUND
   if (!conversation) {
@@ -176,15 +191,28 @@ export const sendGroupMessage = expressAsyncHandler(async (req, res) => {
   });
   // PUSHING THE MESSAGE IN THE CONVERSATION MESSAGES
   conversation.messages.push(newMessage._id);
-  // CLEARING THE DELETED AT SO THE CHAT RE-APPEARS AND BUMP UPDATED AT
-  await Conversation.findByIdAndUpdate(
-    conversationId,
-    {
-      $set: { "participants.$[me].deletedAt": null },
-      $currentDate: { updatedAt: true },
-    },
-    { arrayFilters: [{ "me.userId": senderId }] }
+  // PULLING OUT CURRENT USER CONVERSATION PARTICIPANT RECORD
+  const myConversationPart = conversation?.participants.find(
+    (p) => p.userId.toString() === senderId
   );
+  // IF THE CURRENT USER HAD SOFT-DELETED THE CHAT
+  if (myConversationPart?.deleted) {
+    // UPDATING THE CONVERSATION SOFT DELETED FLAG
+    await Conversation.updateOne(
+      { _id: conversationId, "participants.userId": senderId },
+      {
+        $set: { "participants.$[me].deleted": false },
+        $currentDate: { updatedAt: true },
+      },
+      { arrayFilters: [{ "me.userId": senderId }] }
+    );
+    // GETTING SENDER SOCKET ID
+    const senderSocketId = getReceiverSocketId(senderId);
+    // NOTIFYING THE SENDER TO REFRESH THEIR CONVERSATIONS LIST
+    if (senderSocketId) {
+      io.to(senderSocketId).emit("chatInitiated");
+    }
+  }
   // SAVING THE CONVERSATION
   await conversation.save();
   // POPULATING THE NEW MESSAGE
@@ -228,7 +256,7 @@ export const getAllMessages = expressAsyncHandler(async (req, res) => {
     type: "ONE-TO-ONE",
     participants: {
       $all: [
-        { $elemMatch: { userId, deletedAt: null } },
+        { $elemMatch: { userId, deleted: false } },
         { $elemMatch: { userId: receiverId } },
       ],
     },
@@ -296,7 +324,7 @@ export const getConversationMessages = expressAsyncHandler(async (req, res) => {
   // FINDING THE CONVERSATION BY ENSURING THE LOGGED IN USER IS A PARTICIPANT
   const conversation = await Conversation.findOne({
     _id: conversationId,
-    participants: { $elemMatch: { userId, deletedAt: null } },
+    participants: { $elemMatch: { userId, deleted: false } },
   }).lean();
   // IF CONVERSATION NOT FOUND
   if (!conversation) {
@@ -347,7 +375,7 @@ export const getUserConversations = expressAsyncHandler(async (req, res) => {
   // SETTING LIMIT NUMBER
   const limitNumber = Math.min(50, parseInt(limit) || 10);
   // BUILDING OUR BASE FILTER
-  const filter = { participants: { $elemMatch: { userId, deletedAt: null } } };
+  const filter = { participants: { $elemMatch: { userId, deleted: false } } };
   // SETTING FILTER BASED ON CURSOR PROVIDED
   if (cursor) filter.updatedAt = { $lt: new Date(cursor) };
   // FETCHING THE SLICED CONVERSATIONS & TOTAL NUMBER FOR THE USER
@@ -364,7 +392,7 @@ export const getUserConversations = expressAsyncHandler(async (req, res) => {
   ]);
   // COMPUTING THE LIST OF ALL ACTIVE ONE-TO-ONE CONVERSATIONS LIST
   const currentConversations = await Conversation.find({
-    participants: { $elemMatch: { userId, deletedAt: null } },
+    participants: { $elemMatch: { userId, deleted: false } },
     type: "ONE-TO-ONE",
   })
     .select("participants.userId")
@@ -507,7 +535,10 @@ export const deleteConversation = expressAsyncHandler(async (req, res) => {
       "participants.userId": userId,
     },
     {
-      $set: { "participants.$.deletedAt": new Date() },
+      $set: {
+        "participants.$.deleted": true,
+        "participants.$.deletedAt": new Date(),
+      },
       $currentDate: { updatedAt: true },
     }
   );
