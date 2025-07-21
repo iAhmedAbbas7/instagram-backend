@@ -3,6 +3,7 @@ import express from "express";
 import { singleUpload } from "../middleware/multer.js";
 import isAuthenticated from "../middleware/isAuthenticated.js";
 import {
+  clearConversation,
   createGroupChat,
   deleteConversation,
   getAllMessages,
@@ -25,6 +26,7 @@ router.post("/send/:id", isAuthenticated, sendMessage);
 router.get("/all/:id", isAuthenticated, getAllMessages);
 router.get("/conversations", isAuthenticated, getUserConversations);
 router.delete("/conversation/:id", isAuthenticated, deleteConversation);
+router.get("/clearConversation/:id", isAuthenticated, clearConversation);
 router.post("/conversation/:id/send", isAuthenticated, sendGroupMessage);
 router.post("/groupChat", isAuthenticated, singleUpload, createGroupChat);
 

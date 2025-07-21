@@ -559,3 +559,50 @@ export const deleteConversation = expressAsyncHandler(async (req, res) => {
     .status(200)
     .json({ message: "Chat Deleted Successfully!", success: true });
 });
+
+// <= CLEAR CONVERSATION =>
+export const clearConversation = expressAsyncHandler(async (req, res) => {
+  // GETTING CURRENT LOGGED IN USER ID
+  const userId = req.id;
+  // GETTING CONVERSATION ID FROM REQUEST PARAMS
+  const conversationId = req.params.id;
+  // FINDING THE USER IN THE USER MODEL THROUGH USER ID
+  const foundUser = await User.findById(userId).lean().exec();
+  // IF USER NOT FOUND
+  if (!foundUser) {
+    return res.status(404).json({ message: "User Not Found!", success: false });
+  }
+  // CHECKING THE VALIDITY OF THE CONVERSATION ID
+  if (!mongoose.isValidObjectId(conversationId)) {
+    return res
+      .status(400)
+      .json({ message: "Invalid Conversation ID!", success: false });
+  }
+  // FINDING THE CONVERSATION AND UPDATING THE DELETED AT FLAG
+  const conversation = await Conversation.updateOne(
+    {
+      _id: conversationId,
+      "participants.userId": userId,
+    },
+    {
+      $set: { "participants.$.deletedAt": new Date() },
+      $currentDate: { updatedAt: true },
+    }
+  );
+  // IF CONVERSATION NOT FOUND
+  if (!conversation) {
+    return res
+      .status(404)
+      .json({ message: "Conversation Not Found!", success: false });
+  }
+  // IF THE CONVERSATION WAS NOT MODIFIED
+  if (conversation.nModified === 0) {
+    return res
+      .status(404)
+      .json({ message: "Conversation Not Found!", success: false });
+  }
+  // RETURNING RESPONSE
+  return res
+    .status(200)
+    .json({ message: "Chat Cleared Successfully!", success: true });
+});
