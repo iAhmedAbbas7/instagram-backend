@@ -139,7 +139,10 @@ export const sendMessage = expressAsyncHandler(async (req, res) => {
     // IF RECEIVER SOCKET ID EXISTS
     if (receiverSocketId) {
       // EMITTING THE NEW MESSAGE EVENT TO THE RECEIVER
-      io.to(receiverSocketId).emit("newMessage", populatedMessage);
+      io.to(receiverSocketId).emit("newMessage", {
+        populatedMessage,
+        chatId: haveConversation._id,
+      });
     }
     // RETURNING RESPONSE
     return res.status(201).json({
@@ -390,6 +393,36 @@ export const getUserConversations = expressAsyncHandler(async (req, res) => {
     // COUNTING TOTAL CONVERSATIONS
     Conversation.countDocuments(filter),
   ]);
+  // COMPUTING THE UNREAD MESSAGES COUNT FOR EACH CONVERSATION
+  const conversationsWithUnreadCounts = await Promise.all(
+    // MAPPING OVER EACH FOUND CONVERSATION
+    conversations.map(async (chat) => {
+      // FINDING THE CURRENT USER PARTICIPANT RECORD
+      const myConversationPart = chat.participants.find(
+        (p) => p.userId.toString() === userId
+      );
+      // GETTING THE LAST READ STAMP OF THE USER
+      const lastRead = myConversationPart?.lastRead ?? new Date(0);
+      // COUNTING THE MESSAGES AFTER THE LAST READ, BASED ON CHAT TYPE
+      let unreadMessages;
+      // IF CHAT IS OF ONE-TO-ONE TYPE
+      if (chat.type === "ONE-TO-ONE") {
+        unreadMessages = await Message.countDocuments({
+          _id: { $in: chat.messages },
+          receiverId: userId,
+          createdAt: { $gt: lastRead },
+        });
+      } // ELSE IF CHAT IS OF GROUP TYPE
+      else {
+        unreadMessages = await Message.countDocuments({
+          conversationId: chat._id,
+          createdAt: { $gt: lastRead },
+        });
+      }
+      // RETURNING CHATS WITH UNREAD MESSAGES
+      return { ...chat.toObject(), unreadMessages };
+    })
+  );
   // COMPUTING THE LIST OF ALL ACTIVE ONE-TO-ONE CONVERSATIONS LIST
   const currentConversations = await Conversation.find({
     participants: { $elemMatch: { userId, deleted: false } },
@@ -410,11 +443,13 @@ export const getUserConversations = expressAsyncHandler(async (req, res) => {
     .filter(Boolean);
   // COMPUTING THE NEXT CURSOR OR NEXT API CALL
   const nextCursor =
-    conversations.length === limitNumber
-      ? conversations[conversations.length - 1].updatedAt().toISOString()
+    conversationsWithUnreadCounts.length === limitNumber
+      ? conversationsWithUnreadCounts[conversationsWithUnreadCounts.length - 1]
+          .updatedAt()
+          .toISOString()
       : null;
   // IF NO ACTIVE CONVERSATIONS
-  if (conversations.length === 0) {
+  if (conversationsWithUnreadCounts.length === 0) {
     return res.status(200).json({
       success: true,
       message: "No Active Conversations Found!",
@@ -428,7 +463,7 @@ export const getUserConversations = expressAsyncHandler(async (req, res) => {
   return res.status(200).json({
     success: true,
     nextCursor,
-    conversations,
+    conversations: conversationsWithUnreadCounts,
     totalConversations,
     chatUsers,
   });
@@ -605,4 +640,76 @@ export const clearConversation = expressAsyncHandler(async (req, res) => {
   return res
     .status(200)
     .json({ message: "Chat Cleared Successfully!", success: true });
+});
+
+// <= MARK CONVERSATION AS READ =>
+export const markConversationRead = expressAsyncHandler(async (req, res) => {
+  // GETTING CURRENT LOGGED IN USER ID
+  const userId = req.id;
+  // GETTING CONVERSATION ID FROM REQUEST PARAMS
+  const conversationId = req.params.id;
+  // FINDING THE USER IN THE USER MODEL THROUGH USER ID
+  const foundUser = await User.findById(userId).lean().exec();
+  // IF USER NOT FOUND
+  if (!foundUser) {
+    return res.status(404).json({ message: "User Not Found!", success: false });
+  }
+  // CHECKING THE VALIDITY OF THE CONVERSATION ID
+  if (!mongoose.isValidObjectId(conversationId)) {
+    return res
+      .status(400)
+      .json({ message: "Invalid Conversation ID!", success: false });
+  }
+  // LOADING THE CONVERSATION TO GET ITS TYPE AND LAST MESSAGE
+  const foundConversation = await Conversation.findById(conversationId)
+    .select("type messages")
+    .lean();
+  // INITIATING LAST MESSAGE
+  let lastMessage;
+  // IF THE CONVERSATION IS OF GROUP TYPE
+  if (foundConversation.type === "GROUP") {
+    // FINDING LAST MESSAGE THROUGH CONVERSATION ID
+    lastMessage = await Message.findOne({ conversationId })
+      .sort({ createdAt: -1 })
+      .select("createdAt")
+      .lean();
+  } // IF THE CONVERSATION IS OF ONE-TO-ONE TYPE
+  else {
+    // GETTING THE LAST MESSAGE IN THE CONVERSATION
+    const lastMessageId =
+      foundConversation.messages[foundConversation.messages.length - 1];
+    // IF LAST MESSAGE FOUND
+    if (lastMessageId) {
+      lastMessage = await Message.findById(lastMessageId)
+        .select("createdAt")
+        .lean();
+    }
+  }
+  // COMPUTING THE LAST MESSAGE CREATED AT TIMESTAMP
+  const lastReadTimestamp = lastMessage ? lastMessage.createdAt : new Date(0);
+  // FINDING THE CONVERSATION AND UPDATING LAST READ FLAG FOR CURRENT USER
+  const conversation = await Conversation.updateOne(
+    {
+      _id: conversationId,
+      "participants.userId": userId,
+    },
+    {
+      $set: { "participants.$.lastRead": lastReadTimestamp },
+      $currentDate: { updatedAt: true },
+    }
+  );
+  // IF CONVERSATION NOT FOUND
+  if (!conversation) {
+    return res
+      .status(404)
+      .json({ message: "Conversation Not Found!", success: false });
+  }
+  // IF THE CONVERSATION WAS NOT MODIFIED
+  if (conversation.nModified === 0) {
+    return res
+      .status(404)
+      .json({ message: "Conversation Not Found!", success: false });
+  }
+  // RETURNING RESPONSE
+  return res.status(200).json({ success: true });
 });

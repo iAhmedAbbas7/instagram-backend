@@ -9,6 +9,7 @@ import {
   getAllMessages,
   getConversationMessages,
   getUserConversations,
+  markConversationRead,
   sendGroupMessage,
   sendMessage,
 } from "../controllers/chat.controller.js";
@@ -24,6 +25,7 @@ router.get(
 );
 router.post("/send/:id", isAuthenticated, sendMessage);
 router.get("/all/:id", isAuthenticated, getAllMessages);
+router.get("/markRead/:id", isAuthenticated, markConversationRead);
 router.get("/conversations", isAuthenticated, getUserConversations);
 router.delete("/conversation/:id", isAuthenticated, deleteConversation);
 router.get("/clearConversation/:id", isAuthenticated, clearConversation);
