@@ -76,6 +76,10 @@ export const sendMessage = expressAsyncHandler(async (req, res) => {
       // EMITTING NEW CONVERSATION EVENT TO THE RECEIVER
       io.to(receiverSocketId).emit("newConversation");
     }
+    // SETTING THE MESSAGE DELIVERED AT
+    await Message.findByIdAndUpdate(newMessage._id, {
+      deliveredAt: new Date(),
+    });
     // RETURNING RESPONSE
     return res.status(201).json({
       success: true,
@@ -144,6 +148,10 @@ export const sendMessage = expressAsyncHandler(async (req, res) => {
         chatId: haveConversation._id,
       });
     }
+    // SETTING THE MESSAGE DELIVERED AT
+    await Message.findByIdAndUpdate(newMessage._id, {
+      deliveredAt: new Date(),
+    });
     // RETURNING RESPONSE
     return res.status(201).json({
       success: true,
@@ -240,6 +248,8 @@ export const sendGroupMessage = expressAsyncHandler(async (req, res) => {
       io.to(socketId).emit("newMessage", populatedMessage);
     }
   }
+  // SETTING THE MESSAGE DELIVERED AT
+  await Message.findByIdAndUpdate(newMessage._id, { deliveredAt: new Date() });
   // RETURNING RESPONSE
   return res.status(200).json({ success: true, populatedMessage });
 });
@@ -709,6 +719,28 @@ export const markConversationRead = expressAsyncHandler(async (req, res) => {
     return res
       .status(404)
       .json({ message: "Conversation Not Found!", success: false });
+  }
+  // MARKING ALL MESSAGES FOR THAT CONVERSATION BASED ON TYPE
+  if (foundConversation.type === "GROUP") {
+    // MARKING ALL MESSAGES FOR THAT GROUP CONVERSATION READ
+    await Message.updateMany(
+      {
+        conversationId,
+        createdAt: { $lte: lastReadTimestamp },
+        seenAt: null,
+      },
+      { $set: { seenAt: new Date() } }
+    );
+  } else {
+    await Message.updateMany(
+      {
+        _id: { $in: foundConversation.messages },
+        receiverId: userId,
+        createdAt: { $lte: lastReadTimestamp },
+        seenAt: null,
+      },
+      { $set: { seenAt: new Date() } }
+    );
   }
   // RETURNING RESPONSE
   return res.status(200).json({ success: true });
