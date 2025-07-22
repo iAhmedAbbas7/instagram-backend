@@ -24,6 +24,8 @@ const messageSchema = new mongoose.Schema(
       },
     },
     message: { type: String, required: true },
+    deliveredAt: { type: Date, default: null },
+    seenAt: { type: Date, default: null },
   },
   { timestamps: true }
 );
