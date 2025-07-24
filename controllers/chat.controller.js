@@ -418,14 +418,15 @@ export const getUserConversations = expressAsyncHandler(async (req, res) => {
       // IF CHAT IS OF ONE-TO-ONE TYPE
       if (chat.type === "ONE-TO-ONE") {
         unreadMessages = await Message.countDocuments({
-          _id: { $in: chat.messages },
           receiverId: userId,
+          senderId: { $ne: userId },
           createdAt: { $gt: lastRead },
         });
       } // ELSE IF CHAT IS OF GROUP TYPE
       else {
         unreadMessages = await Message.countDocuments({
           conversationId: chat._id,
+          senderId: { $ne: userId },
           createdAt: { $gt: lastRead },
         });
       }
@@ -454,9 +455,9 @@ export const getUserConversations = expressAsyncHandler(async (req, res) => {
   // COMPUTING THE NEXT CURSOR OR NEXT API CALL
   const nextCursor =
     conversationsWithUnreadCounts.length === limitNumber
-      ? conversationsWithUnreadCounts[conversationsWithUnreadCounts.length - 1]
-          .updatedAt()
-          .toISOString()
+      ? conversationsWithUnreadCounts[
+          conversationsWithUnreadCounts.length - 1
+        ].updatedAt.toISOString()
       : null;
   // IF NO ACTIVE CONVERSATIONS
   if (conversationsWithUnreadCounts.length === 0) {
