@@ -1,10 +1,10 @@
 // <= IMPORTS =>
+import fs from "fs";
+import path from "path";
 import { format } from "date-fns";
 import { v4 as uuid } from "uuid";
-import fs from "fs";
 import fsPromises from "fs/promises";
-import path from "path";
-import { getDirName } from "../utils/getDirname.js";
+import { getDirName } from "../utils/getDirName.js";
 
 // <= DIRNAME =>
 const __dirname = getDirName(import.meta.url);
