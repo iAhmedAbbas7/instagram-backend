@@ -562,14 +562,45 @@ export const createGroupChat = expressAsyncHandler(async (req, res) => {
     avatar,
     avatarPublicId,
   });
+  // HELPER FUNCTION TO CREATE A LIST STYLE CONVERSATION TO SEND IN RESPONSE
+  const buildGroupListConversation = async (conversationId, currentUserId) => {
+    // FINDING THE CONVERSATION THROUGH DOCUMENT ID
+    const conversation = await Conversation.findById(conversationId)
+      .select("-messages")
+      .populate({ path: "participants.userId", select: "-password -__v" })
+      .lean();
+    // COUNTING THE NUMBER OF UNREAD MESSAGES
+    const unreadMessages = await Message.countDocuments({
+      conversationId,
+      senderId: { $ne: currentUserId },
+      seenAt: null,
+    });
+    return { ...conversation, unreadMessages };
+  };
   // POPULATING THE GROUP CHAT
-  const populatedGroupChat = await Conversation.findById(groupChat._id)
-    .populate({
-      path: "participants.userId",
-      select: "-password -__v",
-    })
-    .select("-messages")
-    .lean();
+  const populatedGroupChat = await buildGroupListConversation(
+    groupChat._id,
+    creatorId
+  );
+  // EMITTING THE NEW GROUP CONVERSATION EVENT TO OTHER PARTICIPANTS
+  for (const participantId of allParticipants) {
+    // SKIPPING THE CREATOR
+    if (participantId.toString() === creatorId) continue;
+    // GETTING THE SOCKETS ID OF OTHER GROUP PARTICIPANTS
+    const socketId = getReceiverSocketId(participantId);
+    // IF SOCKET ID EXISTS
+    if (socketId) {
+      // GETTING THE LIST STYLE CONVERSATION FOR EACH PARTICIPANT
+      const populatedChat = await buildGroupListConversation(
+        groupChat._id,
+        participantId
+      );
+      // EMITTING THE EVENT TO EACH PARTICIPANT
+      io.to(socketId).emit("groupConversation", {
+        conversation: populatedChat,
+      });
+    }
+  }
   // RETURNING RESPONSE
   return res
     .status(200)
