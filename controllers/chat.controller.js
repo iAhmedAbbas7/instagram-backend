@@ -32,6 +32,25 @@ export const sendMessage = expressAsyncHandler(async (req, res) => {
       ],
     },
   });
+  // HELPER FUNCTION TO CREATE A LIST STYLE CONVERSATION TO RETURN IN RESPONSE
+  const buildListConversation = async (conversationId, currentUserId) => {
+    // FINDING THE CONVERSATION THROUGH DOCUMENT ID
+    const conversation = await Conversation.findById(conversationId)
+      .select("-messages")
+      .populate({ path: "participants.userId", select: "-password -__v" })
+      .lean();
+    // GETTING THE OTHER USER PART
+    const otherUserId = conversation.participants.find(
+      (p) => p.userId._id.toString() !== currentUserId
+    ).userId._id;
+    // COUNTING THE NUMBER OF UNREAD MESSAGES
+    const unreadMessages = await Message.countDocuments({
+      receiverId: currentUserId,
+      senderId: otherUserId,
+      seenAt: null,
+    });
+    return { ...conversation, unreadMessages };
+  };
   // IF THEY DO NOT HAVE AN ACTIVE CONVERSATION
   if (!haveConversation) {
     // CREATING NEW CONVERSATION BETWEEN THEM
@@ -63,17 +82,18 @@ export const sendMessage = expressAsyncHandler(async (req, res) => {
         select: "username fullName profilePhoto followers following posts",
       })
       .exec();
-    //  POPULATING THE NEW CONVERSATION
-    const populatedConversation = await Conversation.findById(
-      newConversation._id
-    )
-      .select("-messages")
-      .populate({ path: "participants.userId", select: "-password -__v" })
-      .lean();
+    // GETTING THE LIST STYLE CONVERSATION FOR SENDER
+    const listSenderConversation = await buildListConversation(
+      newConversation._id,
+      senderId
+    );
+    // GETTING THE LIST STYLE CONVERSATION FOR RECEIVER
+    const listReceiverConversation = await buildListConversation(
+      newConversation,
+      receiverId
+    );
     // GETTING RECEIVER SOCKET ID
     const receiverSocketId = getReceiverSocketId(receiverId);
-    // GETTING SENDER SOCKET ID
-    const senderSocketId = getReceiverSocketId(senderId);
     // IF RECEIVER SOCKET ID EXISTS
     if (receiverSocketId) {
       // EMITTING THE NEW MESSAGE EVENT TO THE RECEIVER
@@ -82,9 +102,9 @@ export const sendMessage = expressAsyncHandler(async (req, res) => {
         chatId: newConversation._id,
       });
       // EMITTING NEW CONVERSATION EVENT TO THE RECEIVER
-      io.to(receiverSocketId).emit("newConversation");
-      // EMITTING NEW CONVERSATION EVENT TO THE SENDER
-      io.to(senderSocketId).emit("newConversation");
+      io.to(receiverSocketId).emit("newConversation", {
+        conversation: listReceiverConversation,
+      });
     }
     // SETTING THE MESSAGE DELIVERED AT
     await Message.findByIdAndUpdate(newMessage._id, {
@@ -94,7 +114,7 @@ export const sendMessage = expressAsyncHandler(async (req, res) => {
     return res.status(201).json({
       success: true,
       populatedMessage,
-      conversation: populatedConversation,
+      conversation: listSenderConversation,
     });
   } else {
     // CREATING THE MESSAGE
@@ -108,6 +128,11 @@ export const sendMessage = expressAsyncHandler(async (req, res) => {
     haveConversation.messages.push(newMessage._id);
     // SAVING THE CONVERSATION
     await haveConversation.save();
+    // GETTING THE LIST STYLE CONVERSATION FOR SENDER
+    const listSenderConversation = await buildListConversation(
+      haveConversation._id,
+      senderId
+    );
     // PULLING OUT CURRENT USER CONVERSATION PARTICIPANT RECORD
     const myConversationPart = haveConversation?.participants.find(
       (p) => p.userId.toString() === senderId
@@ -123,12 +148,6 @@ export const sendMessage = expressAsyncHandler(async (req, res) => {
         },
         { arrayFilters: [{ "me.userId": senderId }] }
       );
-      // GETTING SENDER SOCKET ID
-      const senderSocketId = getReceiverSocketId(senderId);
-      // NOTIFYING THE SENDER TO REFRESH THEIR CONVERSATIONS LIST
-      if (senderSocketId) {
-        io.to(senderSocketId).emit("chatInitiated");
-      }
     }
     // POPULATING THE CREATED MESSAGE
     const populatedMessage = await Message.findById(newMessage._id)
@@ -141,13 +160,6 @@ export const sendMessage = expressAsyncHandler(async (req, res) => {
         select: "-password -__v",
       })
       .exec();
-    //  POPULATING THE ALREADY CREATED CONVERSATION
-    const populatedConversation = await Conversation.findById(
-      haveConversation._id
-    )
-      .select("-messages")
-      .populate({ path: "participants.userId", select: "-password -__v" })
-      .lean();
     // GETTING RECEIVER SOCKET ID
     const receiverSocketId = getReceiverSocketId(receiverId);
     // IF RECEIVER SOCKET ID EXISTS
@@ -166,7 +178,7 @@ export const sendMessage = expressAsyncHandler(async (req, res) => {
     return res.status(201).json({
       success: true,
       populatedMessage,
-      conversation: populatedConversation,
+      conversation: listSenderConversation,
     });
   }
 });
@@ -417,13 +429,7 @@ export const getUserConversations = expressAsyncHandler(async (req, res) => {
   const conversationsWithUnreadCounts = await Promise.all(
     // MAPPING OVER EACH FOUND CONVERSATION
     conversations.map(async (chat) => {
-      // FINDING THE CURRENT USER PARTICIPANT RECORD
-      const myConversationPart = chat.participants.find(
-        (p) => p.userId.toString() === userId
-      );
-      // GETTING THE LAST READ STAMP OF THE USER
-      const lastRead = myConversationPart?.lastRead ?? new Date(0);
-      // COUNTING THE MESSAGES AFTER THE LAST READ, BASED ON CHAT TYPE
+      // COUNTING THE UNREAD MESSAGES ACCORDING TO SEEN AT, BASED ON CHAT TYPE
       let unreadMessages;
       // IF CHAT IS OF ONE-TO-ONE TYPE
       if (chat.type === "ONE-TO-ONE") {
