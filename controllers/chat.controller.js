@@ -36,7 +36,10 @@ export const sendMessage = expressAsyncHandler(async (req, res) => {
   if (!haveConversation) {
     // CREATING NEW CONVERSATION BETWEEN THEM
     const newConversation = await Conversation.create({
-      participants: [{ userId: senderId }, { userId: receiverId }],
+      participants: [
+        { userId: senderId, lastRead: new Date() },
+        { userId: receiverId, lastRead: new Date() },
+      ],
     });
     // CREATING THE MESSAGE
     const newMessage = await Message.create({
@@ -69,12 +72,19 @@ export const sendMessage = expressAsyncHandler(async (req, res) => {
       .lean();
     // GETTING RECEIVER SOCKET ID
     const receiverSocketId = getReceiverSocketId(receiverId);
+    // GETTING SENDER SOCKET ID
+    const senderSocketId = getReceiverSocketId(senderId);
     // IF RECEIVER SOCKET ID EXISTS
     if (receiverSocketId) {
       // EMITTING THE NEW MESSAGE EVENT TO THE RECEIVER
-      io.to(receiverSocketId).emit("newMessage", populatedMessage);
+      io.to(receiverSocketId).emit("newMessage", {
+        populatedMessage,
+        chatId: newConversation._id,
+      });
       // EMITTING NEW CONVERSATION EVENT TO THE RECEIVER
       io.to(receiverSocketId).emit("newConversation");
+      // EMITTING NEW CONVERSATION EVENT TO THE SENDER
+      io.to(senderSocketId).emit("newConversation");
     }
     // SETTING THE MESSAGE DELIVERED AT
     await Message.findByIdAndUpdate(newMessage._id, {
@@ -417,17 +427,21 @@ export const getUserConversations = expressAsyncHandler(async (req, res) => {
       let unreadMessages;
       // IF CHAT IS OF ONE-TO-ONE TYPE
       if (chat.type === "ONE-TO-ONE") {
+        // FIGURING OUT THE OTHER USER IN THE CHAT
+        const otherUser = chat.participants.find(
+          (p) => p.userId.toString() !== userId
+        ).userId;
         unreadMessages = await Message.countDocuments({
           receiverId: userId,
-          senderId: { $ne: userId },
-          createdAt: { $gt: lastRead },
+          senderId: otherUser,
+          seenAt: null,
         });
       } // ELSE IF CHAT IS OF GROUP TYPE
       else {
         unreadMessages = await Message.countDocuments({
           conversationId: chat._id,
           senderId: { $ne: userId },
-          createdAt: { $gt: lastRead },
+          seenAt: null,
         });
       }
       // RETURNING CHATS WITH UNREAD MESSAGES

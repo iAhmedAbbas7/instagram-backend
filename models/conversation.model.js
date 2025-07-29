@@ -9,7 +9,7 @@ const participantSchema = new mongoose.Schema(
       ref: "User",
       required: true,
     },
-    lastRead: { type: Date, default: null },
+    lastRead: { type: Date, default: new Date() },
     deleted: { type: Boolean, default: false },
     deletedAt: { type: Date, default: null },
     mutedUntil: { type: Date, default: null },
