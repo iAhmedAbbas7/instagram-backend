@@ -1,6 +1,22 @@
 // <= IMPORTS =>
 import mongoose from "mongoose";
 
+// <= MESSAGE SEEN BY SCHEMA =>
+const seenBySchema = new mongoose.Schema(
+  {
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    },
+    seenAt: {
+      type: Date,
+      default: "",
+    },
+  },
+  { _id: false }
+);
+
 // <= MESSAGE SCHEMA =>
 const messageSchema = new mongoose.Schema(
   {
@@ -9,23 +25,14 @@ const messageSchema = new mongoose.Schema(
       ref: "User",
       required: true,
     },
-    receiverId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-      required: function () {
-        return !this.conversationId;
-      },
-    },
     conversationId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Conversation",
-      required: function () {
-        return !this.receiverId;
-      },
+      required: true,
     },
     message: { type: String, required: true },
     deliveredAt: { type: Date, default: null },
-    seenAt: { type: Date, default: null },
+    seenBy: { type: [seenBySchema], default: [] },
   },
   { timestamps: true }
 );

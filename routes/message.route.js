@@ -6,7 +6,6 @@ import {
   clearConversation,
   createGroupChat,
   deleteConversation,
-  getAllMessages,
   getConversationMessages,
   getUserConversations,
   markConversationRead,
@@ -24,7 +23,6 @@ router.get(
   getConversationMessages
 );
 router.post("/send/:id", isAuthenticated, sendMessage);
-router.get("/all/:id", isAuthenticated, getAllMessages);
 router.get("/markRead/:id", isAuthenticated, markConversationRead);
 router.get("/conversations", isAuthenticated, getUserConversations);
 router.delete("/conversation/:id", isAuthenticated, deleteConversation);

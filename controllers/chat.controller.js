@@ -45,9 +45,9 @@ export const sendMessage = expressAsyncHandler(async (req, res) => {
     ).userId._id;
     // COUNTING THE NUMBER OF UNREAD MESSAGES
     const unreadMessages = await Message.countDocuments({
-      receiverId: currentUserId,
+      conversationId,
       senderId: otherUserId,
-      seenAt: null,
+      "seenBy.userId": { $ne: currentUserId },
     });
     return { ...conversation, unreadMessages };
   };
@@ -63,9 +63,8 @@ export const sendMessage = expressAsyncHandler(async (req, res) => {
     // CREATING THE MESSAGE
     const newMessage = await Message.create({
       senderId,
-      receiverId,
       message,
-      conversationId: null,
+      conversationId: newConversation._id,
     });
     // PUSHING THE MESSAGE IN THE NEW CONVERSATION
     newConversation.messages.push(newMessage._id);
@@ -75,10 +74,6 @@ export const sendMessage = expressAsyncHandler(async (req, res) => {
     const populatedMessage = await Message.findById(newMessage._id)
       .populate({
         path: "senderId",
-        select: "username fullName profilePhoto followers following posts",
-      })
-      .populate({
-        path: "receiverId",
         select: "username fullName profilePhoto followers following posts",
       })
       .exec();
@@ -120,9 +115,8 @@ export const sendMessage = expressAsyncHandler(async (req, res) => {
     // CREATING THE MESSAGE
     const newMessage = await Message.create({
       senderId,
-      receiverId,
       message,
-      conversationId: null,
+      conversationId: haveConversation._id,
     });
     // PUSHING THE MESSAGE IN THE EXISTING CONVERSATION
     haveConversation.messages.push(newMessage._id);
@@ -153,10 +147,6 @@ export const sendMessage = expressAsyncHandler(async (req, res) => {
     const populatedMessage = await Message.findById(newMessage._id)
       .populate({
         path: "senderId",
-        select: "-password -__v",
-      })
-      .populate({
-        path: "receiverId",
         select: "-password -__v",
       })
       .exec();
@@ -218,34 +208,11 @@ export const sendGroupMessage = expressAsyncHandler(async (req, res) => {
   // CREATING THE NEW MESSAGE
   const newMessage = await Message.create({
     senderId,
-    receiverId: null,
     conversationId,
     message,
   });
   // PUSHING THE MESSAGE IN THE CONVERSATION MESSAGES
   conversation.messages.push(newMessage._id);
-  // PULLING OUT CURRENT USER CONVERSATION PARTICIPANT RECORD
-  const myConversationPart = conversation?.participants.find(
-    (p) => p.userId.toString() === senderId
-  );
-  // IF THE CURRENT USER HAD SOFT-DELETED THE CHAT
-  if (myConversationPart?.deleted) {
-    // UPDATING THE CONVERSATION SOFT DELETED FLAG
-    await Conversation.updateOne(
-      { _id: conversationId, "participants.userId": senderId },
-      {
-        $set: { "participants.$[me].deleted": false },
-        $currentDate: { updatedAt: true },
-      },
-      { arrayFilters: [{ "me.userId": senderId }] }
-    );
-    // GETTING SENDER SOCKET ID
-    const senderSocketId = getReceiverSocketId(senderId);
-    // NOTIFYING THE SENDER TO REFRESH THEIR CONVERSATIONS LIST
-    if (senderSocketId) {
-      io.to(senderSocketId).emit("chatInitiated");
-    }
-  }
   // SAVING THE CONVERSATION
   await conversation.save();
   // POPULATING THE NEW MESSAGE
@@ -254,90 +221,27 @@ export const sendGroupMessage = expressAsyncHandler(async (req, res) => {
       path: "senderId",
       select: "-password -__v",
     })
-    .populate({
-      path: "receiverId",
-      select: "-password -__v",
-    })
     .exec();
   // BROADCASTING TO ALL GROUP PARTICIPANTS THE NEW MESSAGE
-  for (const p of conversation.participants.map((p) => p.toString())) {
+  for (const participant of conversation.participants) {
+    // EXTRACTING THE EACH PARTICIPANT ID
+    const participantId = participant.userId.toString();
     // SKIPPING THE MESSAGE SENDER
-    if (p === senderId) continue;
+    if (participantId === senderId) continue;
     // GETTING THE SOCKET ID'S OF PARTICIPANTS
-    const socketId = getReceiverSocketId(p);
+    const socketId = getReceiverSocketId(participantId);
     // IF SOCKET ID EXISTS
     if (socketId) {
-      io.to(socketId).emit("newMessage", populatedMessage);
+      io.to(socketId).emit("newMessage", {
+        populatedMessage,
+        chatId: conversation._id,
+      });
     }
   }
   // SETTING THE MESSAGE DELIVERED AT
   await Message.findByIdAndUpdate(newMessage._id, { deliveredAt: new Date() });
   // RETURNING RESPONSE
   return res.status(200).json({ success: true, populatedMessage });
-});
-
-// <= GET ALL MESSAGES =>
-export const getAllMessages = expressAsyncHandler(async (req, res) => {
-  // GETTING THE CURRENT LOGGED IN USER ID
-  const userId = req.id;
-  // GETTING THE OTHER PARTICIPANT ID FROM REQUEST PARAMS
-  const receiverId = req.params.id;
-  // GETTING LIMIT NUMBER AND CURSOR FROM REQUEST QUERY
-  const { limit = 15, cursor } = req.query;
-  // SETTING LIMIT NUMBER
-  const limitNumber = Math.min(50, parseInt(limit));
-  // CHECKING IF THEY HAVE AN ACTIVE CONVERSATION
-  const conversation = await Conversation.findOne({
-    type: "ONE-TO-ONE",
-    participants: {
-      $all: [
-        { $elemMatch: { userId, deleted: false } },
-        { $elemMatch: { userId: receiverId } },
-      ],
-    },
-  }).lean();
-  // PULLING OUT MY DELETION TIMESTAMP
-  const myDeletionTimestamp = conversation?.participants.find(
-    (p) => p.userId.toString() === userId
-  );
-  // CALCULATING THE DELETION TIME IF ANY
-  const deletionTime = myDeletionTimestamp?.deletedAt ?? new Date(0);
-  // IF THEY DO NOT HAVE AN ACTIVE CONVERSATION THEN SENDING EMPTY MESSAGES ARRAY
-  if (!conversation && !cursor)
-    return res
-      .status(200)
-      .json({ success: true, messages: [], pagination: { nextCursor: null } });
-  // INITIATING FILTER FOR FETCHING MESSAGES
-  const filter = {};
-  // IF CONVERSATION EXISTS
-  if (conversation) {
-    (filter._id = { $in: conversation.messages }),
-      (filter.createdAt = { $gt: deletionTime });
-  }
-  // IF CURSOR IS PROVIDED
-  if (cursor) {
-    filter.createdAt = {
-      ...filter.createdAt,
-      $lt: new Date(cursor),
-    };
-  }
-  // FETCHING MESSAGES NEWEST TO OLDEST
-  const page = await Message.find(filter)
-    .sort({ createdAt: -1 })
-    .limit(limitNumber)
-    .populate({ path: "senderId", select: "-password -__v" })
-    .populate({ path: "receiverId", select: "-password -__v" })
-    .lean();
-  // SETTING HAS MORE FLAG
-  const hasMore = page.length === limitNumber;
-  // SETTING NEXT CURSOR BASED ON HAS MORE FLAG
-  const nextCursor = hasMore
-    ? page[page.length - 1].createdAt.toISOString()
-    : null;
-  // RETURNING RESPONSE
-  return res
-    .status(200)
-    .json({ success: true, messages: page, pagination: { nextCursor } });
 });
 
 // <= GET CONVERSATION MESSAGES =>
@@ -387,7 +291,6 @@ export const getConversationMessages = expressAsyncHandler(async (req, res) => {
     .sort({ createdAt: -1 })
     .limit(limitNumber)
     .populate({ path: "senderId", select: "-password -__v" })
-    .populate({ path: "receiverId", select: "-password -__v" })
     .lean();
   // SETTING HAS MORE FLAG
   const hasMore = page.length === limitNumber;
@@ -429,27 +332,12 @@ export const getUserConversations = expressAsyncHandler(async (req, res) => {
   const conversationsWithUnreadCounts = await Promise.all(
     // MAPPING OVER EACH FOUND CONVERSATION
     conversations.map(async (chat) => {
-      // COUNTING THE UNREAD MESSAGES ACCORDING TO SEEN AT, BASED ON CHAT TYPE
-      let unreadMessages;
-      // IF CHAT IS OF ONE-TO-ONE TYPE
-      if (chat.type === "ONE-TO-ONE") {
-        // FIGURING OUT THE OTHER USER IN THE CHAT
-        const otherUser = chat.participants.find(
-          (p) => p.userId.toString() !== userId
-        ).userId;
-        unreadMessages = await Message.countDocuments({
-          receiverId: userId,
-          senderId: otherUser,
-          seenAt: null,
-        });
-      } // ELSE IF CHAT IS OF GROUP TYPE
-      else {
-        unreadMessages = await Message.countDocuments({
-          conversationId: chat._id,
-          senderId: { $ne: userId },
-          seenAt: null,
-        });
-      }
+      // COUNTING THE UNREAD MESSAGES NOT SENT BY ME AND NOT SEEN BY ME
+      const unreadMessages = await Message.countDocuments({
+        conversationId: chat._id,
+        senderId: { $ne: userId },
+        "seenBy.userId": { $ne: userId },
+      });
       // RETURNING CHATS WITH UNREAD MESSAGES
       return { ...chat.toObject(), unreadMessages };
     })
@@ -573,7 +461,7 @@ export const createGroupChat = expressAsyncHandler(async (req, res) => {
     const unreadMessages = await Message.countDocuments({
       conversationId,
       senderId: { $ne: currentUserId },
-      seenAt: null,
+      "seenBy.userId": { $ne: currentUserId },
     });
     return { ...conversation, unreadMessages };
   };
@@ -629,6 +517,7 @@ export const deleteConversation = expressAsyncHandler(async (req, res) => {
   const conversation = await Conversation.updateOne(
     {
       _id: conversationId,
+      type: "ONE-TO-ONE",
       "participants.userId": userId,
     },
     {
@@ -686,14 +575,8 @@ export const clearConversation = expressAsyncHandler(async (req, res) => {
       $currentDate: { updatedAt: true },
     }
   );
-  // IF CONVERSATION NOT FOUND
-  if (!conversation) {
-    return res
-      .status(404)
-      .json({ message: "Conversation Not Found!", success: false });
-  }
-  // IF THE CONVERSATION WAS NOT MODIFIED
-  if (conversation.nModified === 0) {
+  // IF CONVERSATION NOT FOUND OR MODIFIED
+  if (!conversation || conversation.nModified === 0) {
     return res
       .status(404)
       .json({ message: "Conversation Not Found!", success: false });
@@ -726,27 +609,11 @@ export const markConversationRead = expressAsyncHandler(async (req, res) => {
   const foundConversation = await Conversation.findById(conversationId)
     .select("type messages")
     .lean();
-  // INITIATING LAST MESSAGE
-  let lastMessage;
-  // IF THE CONVERSATION IS OF GROUP TYPE
-  if (foundConversation.type === "GROUP") {
-    // FINDING LAST MESSAGE THROUGH CONVERSATION ID
-    lastMessage = await Message.findOne({ conversationId })
-      .sort({ createdAt: -1 })
-      .select("createdAt")
-      .lean();
-  } // IF THE CONVERSATION IS OF ONE-TO-ONE TYPE
-  else {
-    // GETTING THE LAST MESSAGE IN THE CONVERSATION
-    const lastMessageId =
-      foundConversation.messages[foundConversation.messages.length - 1];
-    // IF LAST MESSAGE FOUND
-    if (lastMessageId) {
-      lastMessage = await Message.findById(lastMessageId)
-        .select("createdAt")
-        .lean();
-    }
-  }
+  // FINDING THE LAST MESSAGE IN THE CONVERSATION
+  const lastMessage = await Message.findOne({ conversationId })
+    .sort({ createdAt: -1 })
+    .select("createdAt")
+    .lean();
   // COMPUTING THE LAST MESSAGE CREATED AT TIMESTAMP
   const lastReadTimestamp = lastMessage ? lastMessage.createdAt : new Date(0);
   // FINDING THE CONVERSATION AND UPDATING LAST READ FLAG FOR CURRENT USER
@@ -760,40 +627,23 @@ export const markConversationRead = expressAsyncHandler(async (req, res) => {
       $currentDate: { updatedAt: true },
     }
   );
-  // IF CONVERSATION NOT FOUND
-  if (!conversation) {
+  // IF CONVERSATION NOT FOUND OR MODIFIED
+  if (!conversation || conversation.nModified === 0) {
     return res
       .status(404)
       .json({ message: "Conversation Not Found!", success: false });
   }
-  // IF THE CONVERSATION WAS NOT MODIFIED
-  if (conversation.nModified === 0) {
-    return res
-      .status(404)
-      .json({ message: "Conversation Not Found!", success: false });
-  }
-  // MARKING ALL MESSAGES FOR THAT CONVERSATION BASED ON TYPE
-  if (foundConversation.type === "GROUP") {
-    // MARKING ALL MESSAGES FOR THAT GROUP CONVERSATION READ
-    await Message.updateMany(
-      {
-        conversationId,
-        createdAt: { $lte: lastReadTimestamp },
-        seenAt: null,
-      },
-      { $set: { seenAt: new Date() } }
-    );
-  } else {
-    await Message.updateMany(
-      {
-        _id: { $in: foundConversation.messages },
-        receiverId: userId,
-        createdAt: { $lte: lastReadTimestamp },
-        seenAt: null,
-      },
-      { $set: { seenAt: new Date() } }
-    );
-  }
+  // MARKING ALL MESSAGES FOR THAT CONVERSATION
+  await Message.updateMany(
+    {
+      conversationId,
+      createdAt: { $lte: lastReadTimestamp },
+      "seenBy.userId": { $ne: userId },
+    },
+    {
+      $push: { seenBy: { userId, seenAt: new Date() } },
+    }
+  );
   // RETURNING RESPONSE
   return res.status(200).json({ success: true });
 });
