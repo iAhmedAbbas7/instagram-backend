@@ -18,6 +18,7 @@ import { getDirName } from "./utils/getDirName.js";
 import { app, server } from "./services/socket.js";
 import messageRoute from "./routes/message.route.js";
 import { errorHandler } from "./middleware/errorHandler.js";
+import helmetMiddleware from "./middleware/helmetMiddleware.js";
 
 // <= DATABASE CONNECTION =>
 connectDB();
@@ -37,6 +38,8 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 // COOKIE PARSER MIDDLEWARE
 app.use(cookieParser());
+// HELMET MIDDLEWARE
+app.use(helmetMiddleware());
 // STATIC MIDDLEWARE
 app.use("/", express.static(path.join(__dirname, "public")));
 
