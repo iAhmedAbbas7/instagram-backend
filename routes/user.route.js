@@ -10,6 +10,7 @@ import {
   followOrUnfollowUser,
   getSuggestedUsers,
   getUserProfile,
+  refreshToken,
   registerUser,
   searchUsers,
   searchUsersInfinite,
@@ -22,6 +23,7 @@ const router = express.Router();
 
 // <= ROUTES =>
 router.get("/logout", userLogout);
+router.post("/refreshToken", refreshToken);
 router.post("/login", authLimiter, userLogin);
 router.get("/search", isAuthenticated, searchUsers);
 router.post("/register", authLimiter, registerUser);

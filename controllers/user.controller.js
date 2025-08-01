@@ -2,10 +2,12 @@
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import mongoose from "mongoose";
+import { v4 as uuid } from "uuid";
 import getDataURI from "../utils/dataURI.js";
 import { User } from "../models/user.model.js";
 import cloudinary from "../utils/cloudinary.js";
 import expressAsyncHandler from "express-async-handler";
+import { RefreshToken } from "../models/refreshToken.model.js";
 import { getReceiverSocketId, io } from "../services/socket.js";
 
 // <= USER REGISTRATION =>
@@ -145,13 +147,31 @@ export const userLogin = expressAsyncHandler(async (req, res) => {
       .status(403)
       .json({ message: "Incorrect Password!", success: false });
   }
+  // CHECKING FOR PREVIOUS ISSUED TOKENS AND CLEARING THEM
+  await RefreshToken.deleteMany({
+    userId: foundUser._id,
+    revoked: false,
+  });
   // SETTING TOKEN DATA
   const tokenData = {
     userId: foundUser._id,
   };
-  // SIGNING TOKEN
-  const token = jwt.sign(tokenData, process.env.TOKEN_SECRET_KEY, {
-    expiresIn: "1d",
+  // SIGNING ACCESS TOKEN
+  const accessToken = jwt.sign(tokenData, process.env.AT_SECRET, {
+    expiresIn: process.env.AT_EXPIRES_IN,
+  });
+  // SETTING REFRESH TOKEN ID
+  const refreshTokenId = uuid();
+  // SIGNING REFRESH TOKEN
+  const refreshToken = jwt.sign(tokenData, process.env.RT_SECRET, {
+    expiresIn: process.env.RT_EXPIRES_IN,
+    jwtid: refreshTokenId,
+  });
+  // PERSISTING THE REFRESH TOKEN IN THE DATABASE
+  await RefreshToken.create({
+    tokenId: refreshTokenId,
+    userId: foundUser._id,
+    expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
   });
   // SETTING USER TO RETURN
   const user = await User.findById(foundUser._id)
@@ -159,8 +179,14 @@ export const userLogin = expressAsyncHandler(async (req, res) => {
     .exec();
   return res
     .status(200)
-    .cookie("token", token, {
-      maxAge: 1 * 24 * 60 * 60 * 1000,
+    .cookie("token", accessToken, {
+      maxAge: process.env.AT_COOKIE_MAX_AGE,
+      httpOnly: true,
+      sameSite: process.env.NODE_ENV === "development" ? "lax" : "none",
+      secure: process.env.NODE_ENV === "development" ? false : true,
+    })
+    .cookie("refreshToken", refreshToken, {
+      maxAge: process.env.RT_COOKIE_MAX_AGE,
       httpOnly: true,
       sameSite: process.env.NODE_ENV === "development" ? "lax" : "none",
       secure: process.env.NODE_ENV === "development" ? false : true,
@@ -172,11 +198,133 @@ export const userLogin = expressAsyncHandler(async (req, res) => {
     });
 });
 
+// <= REFRESH TOKEN =>
+export const refreshToken = expressAsyncHandler(async (req, res) => {
+  // GETTING THE REFRESH TOKEN FROM REQUEST COOKIES
+  const oldRefreshToken = req.cookies.refreshToken;
+  // IF NO REFRESH TOKEN FOUND
+  if (!oldRefreshToken) {
+    return res
+      .status(401)
+      .json({ message: "Unauthorized to Perform Action!", success: false });
+  }
+  // INITIATING THE DECODED TOKEN
+  let decodedToken;
+  // VERIFYING THE REFRESH TOKEN
+  try {
+    decodedToken = jwt.verify(oldRefreshToken, process.env.RT_SECRET);
+  } catch (error) {
+    // EXPIRED OR INVALID REFRESH TOKEN
+    return res
+      .status(401)
+      .json({ message: "Unauthorized to Perform Action!", success: false });
+  }
+  // EXTRACTING THE REFRESH TOKEN ID
+  const refreshTokenId = decodedToken.jti;
+  // EXTRACTING THE USER IF FROM REFRESH TOKEN
+  const userId = decodedToken.userId;
+  // FINDING THE REFRESH TOKEN IN THE DATABASE
+  const existingRefreshToken = await RefreshToken.findOne({
+    tokenId: refreshTokenId,
+    userId,
+    revoked: false,
+  }).lean();
+  // IF REFRESH TOKEN NOT FOUND OR IS EXPIRED
+  if (
+    !existingRefreshToken ||
+    existingRefreshToken.expiresAt.getTime() < Date.now()
+  ) {
+    return res
+      .status(401)
+      .json({ message: "Unauthorized to Perform Action!", success: false });
+  }
+  // REVOKING THE OLD REFRESH TOKEN
+  await RefreshToken.findOneAndUpdate(
+    { tokenId: refreshTokenId, userId, revoked: false },
+    {
+      revoked: true,
+    }
+  );
+  // DELETING THE OLD REFRESH TOKEN
+  await RefreshToken.deleteOne({
+    tokenId: refreshTokenId,
+    userId,
+    revoked: true,
+  });
+  // SETTING TOKEN DATA
+  const tokenData = {
+    userId: userId,
+  };
+  // SIGNING NEW ACCESS TOKEN
+  const accessToken = jwt.sign(tokenData, process.env.AT_SECRET, {
+    expiresIn: process.env.AT_EXPIRES_IN,
+  });
+  // SETTING REFRESH TOKEN ID
+  const newRefreshTokenId = uuid();
+  // SIGNING REFRESH TOKEN
+  const newRefreshToken = jwt.sign(tokenData, process.env.RT_SECRET, {
+    expiresIn: process.env.RT_EXPIRES_IN,
+    jwtid: newRefreshTokenId,
+  });
+  // PERSISTING THE REFRESH TOKEN IN THE DATABASE
+  await RefreshToken.create({
+    tokenId: newRefreshTokenId,
+    userId,
+    expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+  });
+  // SETTING BOTH TOKEN IN RESPONSE COOKIES
+  return res
+    .status(200)
+    .cookie("token", accessToken, {
+      maxAge: process.env.AT_COOKIE_MAX_AGE,
+      httpOnly: true,
+      sameSite: process.env.NODE_ENV === "development" ? "lax" : "none",
+      secure: process.env.NODE_ENV === "development" ? false : true,
+    })
+    .cookie("refreshToken", newRefreshToken, {
+      maxAge: process.env.RT_COOKIE_MAX_AGE,
+      httpOnly: true,
+      sameSite: process.env.NODE_ENV === "development" ? "lax" : "none",
+      secure: process.env.NODE_ENV === "development" ? false : true,
+    })
+    .json({ success: true, message: "Token Refreshed Successfully!" });
+});
+
 // <= USER LOGOUT =>
-export const userLogout = expressAsyncHandler(async (_, res) => {
+export const userLogout = expressAsyncHandler(async (req, res) => {
+  // GETTING THE REFRESH TOKEN FROM REQUEST COOKIES
+  const refreshToken = req.cookies.refreshToken;
+  // IF REFRESH TOKEN FOUND
+  if (refreshToken) {
+    try {
+      // DECODING THE REFRESH TOKEN
+      const decodedToken = jwt.verify(refreshToken, process.env.RT_SECRET);
+      // GETTING THE REFRESH TOKEN ID
+      const refreshTokenId = decodedToken.jti;
+      // GETTING THE USER IF FROM THE REFRESH TOKEN
+      const userId = decodedToken.userId;
+      // UPDATING THE REFRESH TOKEN IN THE DATABASE
+      await RefreshToken.findOneAndUpdate(
+        { tokenId: refreshTokenId, userId: userId, revoked: false },
+        {
+          revoked: true,
+        }
+      );
+      // DELETING THE REFRESH TOKEN FROM DATABASE
+      await RefreshToken.deleteOne({
+        tokenId: refreshTokenId,
+        userId: userId,
+        revoked: true,
+      });
+    } catch (error) {
+      // LOGGING ERROR IF TOKEN IS INVALID OR EXPIRED
+      console.log("Invalid or Expired Refresh Token", error);
+    }
+  }
   // CLEARING THE COOKIE
   return res
     .cookie("token", "", { maxAge: 0 })
+    .cookie("refreshToken", "", { maxAge: 0 })
     .json({ message: "User Logged Out Successfully!", success: true });
 });
 
