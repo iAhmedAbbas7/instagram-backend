@@ -11,10 +11,20 @@ const isAuthenticated = (req, res, next) => {
       .status(401)
       .json({ message: "Unauthorized to Perform Action!", success: false });
   }
-  // DECODING TOKEN IF FOUND
-  const decodedToken = jwt.verify(token, process.env.TOKEN_SECRET_KEY);
-  // IF NOT DECODED
-  if (!decodedToken) {
+  // INITIATING DECODED TOKEN
+  let decodedToken;
+  try {
+    // DECODING THE ACCESS TOKEN
+    decodedToken = jwt.verify(token, process.env.AT_SECRET);
+  } catch (error) {
+    // IF TOKEN EXPIRED TRIGGERING REFRESH TOKEN ON CLIENT SIDE
+    if (error.name === "TokenExpiredError") {
+      return res.status(401).json({
+        message: "Unauthorized to Perform Action!",
+        success: false,
+      });
+    }
+    // IF INVALID TOKEN OR OTHER ERRORS
     return res
       .status(401)
       .json({ message: "Invalid Token Found", success: false });
