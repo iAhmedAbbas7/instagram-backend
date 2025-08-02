@@ -39,6 +39,28 @@ io.on("connection", (socket) => {
   }
   // EMITTING THE USER ONLINE EVENT
   io.emit("getOnlineUsers", Object.keys(userSocketMap));
+  // HANDLING JOIN CHAT SOCKET EVENT
+  socket.on("joinChat", ({ chatId }) => {
+    // IF NO CHAT ID IS PROVIDED
+    if (!chatId) return;
+    // JOINING THE CHAT ROOM
+    socket.join(chatId);
+  });
+  // HANDLING LEAVE CHAT SOCKET EVENT
+  socket.on("leaveChat", ({ chatId }) => {
+    // IF NO CHAT ID IS PROVIDED
+    if (!chatId) return;
+    // LEAVING THE CHAT ROOM
+    socket.leave(chatId);
+  });
+  // HANDLING TYPING SOCKET EVENT
+  socket.on("typing", ({ chatId, user }) => {
+    socket.to(chatId).emit("typing", { chatId, user });
+  });
+  // HANDLING STOP TYPING SOCKET EVENT
+  socket.on("stopTyping", ({ chatId, user }) => {
+    socket.to(chatId).emit("stopTyping", { chatId, user });
+  });
   // ON SOCKET DISCONNECTION
   socket.on("disconnect", async () => {
     if (userId) {
