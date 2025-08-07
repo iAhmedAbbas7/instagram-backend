@@ -177,6 +177,32 @@ export const userLogin = expressAsyncHandler(async (req, res) => {
   const user = await User.findById(foundUser._id)
     .select("-password -__v")
     .exec();
+  // FINDING SETTING FOR THE USER
+  const settings = await Settings.findOneAndUpdate(
+    { user: foundUser._id },
+    {
+      $setOnInsert: {
+        ads: {},
+        support: {},
+        accounts: {},
+        payments: {},
+        security: {},
+        creatorTools: {},
+        notifications: {},
+        contentPreferences: {},
+        privacyInteractions: {},
+        displayAccessibility: {},
+      },
+    },
+    {
+      new: true,
+      upsert: true,
+      setDefaultsOnInsert: true,
+      runValidators: true,
+    }
+  )
+    .lean()
+    .exec();
   return res
     .status(200)
     .cookie("token", accessToken, {
@@ -195,6 +221,7 @@ export const userLogin = expressAsyncHandler(async (req, res) => {
       message: `Welcome Back ${foundUser.fullName}`,
       success: true,
       user,
+      settings,
     });
 });
 
