@@ -17,6 +17,7 @@ import { logEvents } from "./middleware/logger.js";
 import { getDirName } from "./utils/getDirName.js";
 import { app, server } from "./services/socket.js";
 import messageRoute from "./routes/message.route.js";
+import settingsRoute from "./routes/settings.route.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 import helmetMiddleware from "./middleware/helmetMiddleware.js";
 
@@ -52,6 +53,8 @@ app.use("/api/v1/user", userRoute);
 app.use("/api/v1/post", postRoute);
 // MESSAGE ROUTE
 app.use("/api/v1/message", messageRoute);
+// SETTINGS ROUTE
+app.use("/api/v1/settings", settingsRoute);
 
 // <= MIDDLEWARE 404 RESPONSE =>
 app.all("*", (req, res) => {
