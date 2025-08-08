@@ -11,6 +11,7 @@ import cookieParser from "cookie-parser";
 import rootRoute from "./routes/root.route.js";
 import userRoute from "./routes/user.route.js";
 import postRoute from "./routes/post.route.js";
+import storyRoute from "./routes/story.route.js";
 import connectDB from "./config/dbConnection.js";
 import corsOptions from "./config/corsOptions.js";
 import { logEvents } from "./middleware/logger.js";
@@ -18,6 +19,7 @@ import { getDirName } from "./utils/getDirName.js";
 import { app, server } from "./services/socket.js";
 import messageRoute from "./routes/message.route.js";
 import settingsRoute from "./routes/settings.route.js";
+import { startStoryCleanup } from "./cron/storyCleanup.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 import helmetMiddleware from "./middleware/helmetMiddleware.js";
 
@@ -51,6 +53,8 @@ app.use("/", rootRoute);
 app.use("/api/v1/user", userRoute);
 // POST ROUTE
 app.use("/api/v1/post", postRoute);
+// STORY ROUTE
+app.use("/api/v1/story", storyRoute);
 // MESSAGE ROUTE
 app.use("/api/v1/message", messageRoute);
 // SETTINGS ROUTE
@@ -82,6 +86,8 @@ mongoose.connection.once("open", () => {
   server.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);
   });
+  // STARTING THE STORIES CLEANUP JOB
+  startStoryCleanup();
 });
 
 // <= DATABASE CONNECTION ERROR LISTENER =>
