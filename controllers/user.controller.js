@@ -6,6 +6,7 @@ import { v4 as uuid } from "uuid";
 import getDataURI from "../utils/dataURI.js";
 import { User } from "../models/user.model.js";
 import cloudinary from "../utils/cloudinary.js";
+import { Settings } from "../models/settings.model.js";
 import expressAsyncHandler from "express-async-handler";
 import { RefreshToken } from "../models/refreshToken.model.js";
 import { getReceiverSocketId, io } from "../services/socket.js";
