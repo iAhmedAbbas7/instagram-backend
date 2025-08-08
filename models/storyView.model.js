@@ -1,7 +1,7 @@
 // <= IMPORTS =>
 import mongoose from "mongoose";
 
-// <= STORY MEDIA SCHEMA =>
+// <= STORY VIEW SCHEMA =>
 const storyViewSchema = new mongoose.Schema(
   {
     story: {
