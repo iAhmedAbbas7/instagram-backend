@@ -87,7 +87,11 @@ mongoose.connection.once("open", () => {
     console.log(`Server is running on port ${PORT}`);
   });
   // STARTING THE STORIES CLEANUP JOB
-  startStoryCleanup();
+  if ((process.env.CLEANUP_ENABLED || "true") === "true") {
+    startStoryCleanup();
+  } else {
+    console.log("Story Cleanup Disabled!");
+  }
 });
 
 // <= DATABASE CONNECTION ERROR LISTENER =>
