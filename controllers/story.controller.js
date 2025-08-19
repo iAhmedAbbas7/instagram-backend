@@ -85,6 +85,8 @@ export const getActiveStories = expressAsyncHandler(async (req, res) => {
   if (!foundUser) {
     return res.status(404).json({ message: "User Not Found!", success: false });
   }
+  // CHECKING IF THE EXPAND QUERY FLAG IS PRESENT
+  const expand = req.query?.expand === "true";
   // SETTING CURRENT TIME
   const now = new Date();
   // FINDING THE ACTIVE STORIES
@@ -115,14 +117,60 @@ export const getActiveStories = expressAsyncHandler(async (req, res) => {
       story: { $in: g.storyIds },
       viewer: userId,
     });
-    // ADDING THE STORY TO THE TRAY
-    tray.push({
-      owner: owner,
-      hasSeen: !!viewed,
-      storyIds: g.storyIds,
-      storyCount: g.mediaCount,
-      latestStoryAt: g.latestCreatedAt,
-    });
+    // IF EXPAND QUERY PARAM IS PRESENT, RETURNING THE FULL STORY DOCS WITH MEDIA
+    if (expand) {
+      // FETCHING ALL THE STORY DOCS FOR THIS OWNER IN BULK
+      const storiesDocs = await Story.find({ _id: { $in: g.storyIds } })
+        .sort({ createdAt: -1 })
+        .select("medias createdAt expiresAt")
+        .lean();
+      // MAPPING STORIES FOR ORDER-PRESERVING RECONSTRUCTION
+      const storyMap = new Map(storiesDocs.map((s) => [s._id.toString(), s]));
+      // BUILDING THE STORY STACK PRESERVING THE SAME ORDER OF STORY ID'S
+      const storyStack = g.storyIds
+        .map((id) => {
+          // INDIVIDUAL STORY DOC
+          const story = storyMap.get(id.toString());
+          // IF NO STORY
+          if (!story) return;
+          // ENSURING MEDIAS ARE ORDERED BY ASCENDING ORDER
+          story.medias = (story.medias || []).sort(
+            (a, b) => (a.order || 0) - (b.order || 0)
+          );
+          // RETURNING COMPACT STORY PAYLOAD
+          return {
+            storyId: story._id,
+            createdAt: story.createdAt,
+            expiresAt: story.expiresAt,
+            medias: story.medias.map((m) => ({
+              url: m.url,
+              type: m.type,
+              order: m.order,
+              duration: m.duration,
+              publicId: m.publicId,
+            })),
+          };
+        })
+        .filter(Boolean);
+      // ADDING THE STORY TO THE TRAY (EXPANDED)
+      tray.push({
+        storyStack,
+        owner: owner,
+        hasSeen: !!viewed,
+        storyIds: g.storyIds,
+        storyCount: g.mediaCount,
+        latestStoryAt: g.latestCreatedAt,
+      });
+    } else {
+      // ADDING THE STORY TO THE TRAY (COMPACT)
+      tray.push({
+        owner: owner,
+        hasSeen: !!viewed,
+        storyIds: g.storyIds,
+        storyCount: g.mediaCount,
+        latestStoryAt: g.latestCreatedAt,
+      });
+    }
   }
   // RETURNING RESPONSE
   return res.status(200).json({ success: true, tray });
