@@ -79,31 +79,46 @@ export const uploadAndCreateStory = expressAsyncHandler(async (req, res) => {
 export const getActiveStories = expressAsyncHandler(async (req, res) => {
   // GETTING CURRENT LOGGED IN USER ID
   const userId = req.id;
+  // GETTING LIMIT NUMBER FROM THE REQUEST QUERY
+  const limitNumber = req.query?.limit;
+  // GETTING QUERY CURSOR FROM THE REQUEST QUERY
+  const queryCursor = req.query?.cursor;
+  // SETTING LIMIT NUMBER FOR THE QUERY
+  const limit = Math.min(50, parseInt(limitNumber, 10) || 20);
+  // SETTING QUERY Q=CURSOR FOR THE QUERY
+  const cursor = queryCursor ? new Date(queryCursor) : null;
+  // SETTING CURRENT TIME
+  const now = new Date();
   // FINDING THE USER IN THE USER MODEL THROUGH USER ID
   const foundUser = await User.findById(userId).exec();
   // IF USER NOT FOUND
   if (!foundUser) {
     return res.status(404).json({ message: "User Not Found!", success: false });
   }
-  // CHECKING IF THE EXPAND QUERY FLAG IS PRESENT
-  const expand = req.query?.expand === "true";
-  // SETTING CURRENT TIME
-  const now = new Date();
-  // FINDING THE ACTIVE STORIES
-  const activeStories = await Story.aggregate([
+  // BUILDING THE AGGREGATION PIPELINE
+  const pipeline = [
+    // MATCHING ACTIVE STORIES
     { $match: { expiresAt: { $gt: now } } },
+    // ORDERING BY THE CREATED AT TIMESTAMP
     { $sort: { createdAt: -1 } },
+    // GROUPING BY OWNER TO GET LATEST CREATED AT AND STORY ID'S LIST
     {
       $group: {
         _id: "$owner",
-        latestCreatedAt: { $first: "$createdAt" },
         storyIds: { $push: "$_id" },
+        latestCreatedAt: { $first: "$createdAt" },
         mediaCount: { $sum: { $size: "$medias" } },
       },
     },
-    { $sort: { latestCreatedAt: -1 } },
-    { $limit: 200 },
-  ]);
+  ];
+  // IF CURSOR IS PROVIDED, THEN FILTERING THE OWNERS HAVING LATEST < CURSOR
+  if (cursor) {
+    pipeline.push({ $match: { latestCreatedAt: { $lt: cursor } } });
+  }
+  // SORTING THE OWNERS BY LATEST DESCENDING AND LIMIT
+  pipeline.push({ $sort: { latestCreatedAt: -1 } }, { $limit: limit });
+  // EXECUTING THE AGGREGATION
+  const activeStories = await Story.aggregate(pipeline);
   // INITIATING THE TRAY TO GROUP STORIES
   const tray = [];
   // ADDING EACH STORY TO TRAY WITH NECESSARY DETAILS
@@ -117,63 +132,59 @@ export const getActiveStories = expressAsyncHandler(async (req, res) => {
       story: { $in: g.storyIds },
       viewer: userId,
     });
-    // IF EXPAND QUERY PARAM IS PRESENT, RETURNING THE FULL STORY DOCS WITH MEDIA
-    if (expand) {
-      // FETCHING ALL THE STORY DOCS FOR THIS OWNER IN BULK
-      const storiesDocs = await Story.find({ _id: { $in: g.storyIds } })
-        .sort({ createdAt: -1 })
-        .select("medias createdAt expiresAt")
-        .lean();
-      // MAPPING STORIES FOR ORDER-PRESERVING RECONSTRUCTION
-      const storyMap = new Map(storiesDocs.map((s) => [s._id.toString(), s]));
-      // BUILDING THE STORY STACK PRESERVING THE SAME ORDER OF STORY ID'S
-      const storyStack = g.storyIds
-        .map((id) => {
-          // INDIVIDUAL STORY DOC
-          const story = storyMap.get(id.toString());
-          // IF NO STORY
-          if (!story) return;
-          // ENSURING MEDIAS ARE ORDERED BY ASCENDING ORDER
-          story.medias = (story.medias || []).sort(
-            (a, b) => (a.order || 0) - (b.order || 0)
-          );
-          // RETURNING COMPACT STORY PAYLOAD
-          return {
-            storyId: story._id,
-            createdAt: story.createdAt,
-            expiresAt: story.expiresAt,
-            medias: story.medias.map((m) => ({
-              url: m.url,
-              type: m.type,
-              order: m.order,
-              duration: m.duration,
-              publicId: m.publicId,
-            })),
-          };
-        })
-        .filter(Boolean);
-      // ADDING THE STORY TO THE TRAY (EXPANDED)
-      tray.push({
-        storyStack,
-        owner: owner,
-        hasSeen: !!viewed,
-        storyIds: g.storyIds,
-        storyCount: g.mediaCount,
-        latestStoryAt: g.latestCreatedAt,
-      });
-    } else {
-      // ADDING THE STORY TO THE TRAY (COMPACT)
-      tray.push({
-        owner: owner,
-        hasSeen: !!viewed,
-        storyIds: g.storyIds,
-        storyCount: g.mediaCount,
-        latestStoryAt: g.latestCreatedAt,
-      });
-    }
+
+    const storiesDocs = await Story.find({
+      _id: { $in: g.storyIds },
+      expiresAt: { $gt: now },
+    })
+      .sort({ createdAt: -1 })
+      .select("medias createdAt expiresAt")
+      .lean();
+    // MAPPING STORIES FOR ORDER-PRESERVING RECONSTRUCTION
+    const storyMap = new Map(storiesDocs.map((s) => [s._id.toString(), s]));
+    // BUILDING THE STORY STACK PRESERVING THE SAME ORDER OF STORY ID'S
+    const storyStack = g.storyIds
+      .map((id) => {
+        // INDIVIDUAL STORY DOC
+        const story = storyMap.get(id.toString());
+        // IF NO STORY
+        if (!story) return;
+        // ENSURING MEDIAS ARE ORDERED BY ASCENDING ORDER
+        story.medias = (story.medias || []).sort(
+          (a, b) => (a.order || 0) - (b.order || 0)
+        );
+        // RETURNING COMPACT STORY PAYLOAD
+        return {
+          storyId: story._id,
+          createdAt: story.createdAt,
+          expiresAt: story.expiresAt,
+          medias: story.medias.map((m) => ({
+            url: m.url,
+            type: m.type,
+            order: m.order,
+            duration: m.duration,
+            publicId: m.publicId,
+          })),
+        };
+      })
+      .filter(Boolean);
+    // ADDING THE STORY TO THE TRAY (EXPANDED)
+    tray.push({
+      storyStack,
+      owner: owner,
+      hasSeen: !!viewed,
+      storyIds: g.storyIds,
+      storyCount: g.mediaCount,
+      latestStoryAt: g.latestCreatedAt,
+    });
   }
+  // COMPUTING THE NEXT CURSOR FOR THE NEXT QUERY
+  const nextCursor =
+    activeStories.length === limit && activeStories.length > 0
+      ? activeStories[activeStories.length - 1].latestCreatedAt.toISOString()
+      : null;
   // RETURNING RESPONSE
-  return res.status(200).json({ success: true, tray });
+  return res.status(200).json({ success: true, tray, nextCursor });
 });
 
 // <= GET STORY =>
